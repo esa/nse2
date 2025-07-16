@@ -1,0 +1,28 @@
+Creating a new simulation scenario from scratch is a straight forward process, but it requires a good understanding of the Docker Compose file format and the specific requirements for network simulation. The following sections will guide you through the steps to manually create a scenario using Docker Compose.
+
+For a concrete example, you can refer to the simple scenario in the `scenarios/simple` directory of the NSE2 repository, which contains a basic setup with three nodes connected in a line. 
+It is described in detail in <<running>>, but you can also use it as a starting point for your own scenarios.
+
+==== Create a Docker Compose File
+
+Every new scenario starts with the creation of a Docker Compose file, which defines the network topology and the nodes in the simulation. The Compose file is written in YAML format and specifies the services (nodes), networks, and volumes that make up the simulation environment. 
+It can be based upon an existing compose file, e.g., from a CI template or project repository, or you can start from scratch.
+The details about the Compose file format can be found in <<compose-format>>.
+
+==== Optionally: Create a Contact Plan
+
+The contact plan defines the communication links between the nodes and the link properties such as bandwidth, delay, loss, and jitter. It is written in a specific format that is parsed by the `nse2_contacts` tool during the simulation.
+The contact plan file is typically named `contacts.ccp` and is placed in the same directory as the Compose file. The details about the contact plan format can be found in <<contactplan-format>>.
+Of course, if no traffic shaping and no dynamic links are needed, the contact plan can be empty or not used at all.
+
+==== Optionally: Create an Actions File
+
+The actions file defines the actions to be performed at specific points in time during the simulation, such as starting processes, sending messages, or logging information. It is written in a simple text format that is interpreted as a shell script and can include commands to be executed on the nodes.
+The actions file is typically named `actions.txt` and is placed in the same directory as the Compose file. The details about the actions file format can be found in <<actions-format>>.
+If no actions are needed, the actions file can be empty or not used at all.
+
+==== Optionally: Create a Visualization File
+
+The visualization file is a JSON file that defines a scenario description, the nodes with their visualization properties, and where live link information can be found. It is used to visualize the network topology and the active links between the nodes.
+The visualization file is typically named `viz.json` and is placed in the same directory as the Compose file. The details about the visualization file format can be found in <<viz-format>>.
+If no visualization is needed, the visualization file can be empty or not used at all.

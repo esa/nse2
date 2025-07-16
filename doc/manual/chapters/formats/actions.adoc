@@ -1,0 +1,25 @@
+Action files define a number of actions or commands that are executed during different points in time during the simulation. These actions can be used to control the behavior of the nodes, such as starting or stopping services, sending messages, or changing configurations.
+
+The actions file is written in a simple text format, where each line represents an action. A simple example can be seen in the following snippet:
+[source,language=shell]
+----
+include::../../../../scenarios/simple/actions.txt[]
+----
+
+IMPORTANT: There is one important but _optional_ global variable, `DURATION`, which is set to the duration of the simulation, or more precisely, the runtime of the action script in seconds. Without this the actions run until the action runner process is stopped.
+
+There are three types of actions that can be defined in the actions file:
+
+.Action Commands
+[width="100%",cols="1,2,3",options="header"]
+|===
+| Command | Parameters | Description 
+| `EXEC` | `<timestamp> <node_id> <command>` | Executes a command _once_ on the specified node at the given timestamp.
+| `REPEAT` | `<timestamp> <interval> <node_id> <command>` | _Repeats_ a command on the specified node starting at the given timestamp with the specified interval.
+| `FINALLY` | `<node_id> <command>` | Executes a command on the specified node at the end of the simulation or when the action runner is stopped.
+|===
+
+TIP: Action scripts are interpreted as shell scripts, thus, you can also use environment variables in your scripts. For example, you can set something like a shared `$SEND_INTERVAL` to be reused by all `REPEAT` actions.
+
+
+CAUTION: There can be only one entry per time and node or in the case of `FINALLY` one entry per node. If there are multiple entries for the same time and node, only the last one will be executed. This is to ensure that the actions are deterministic and do not interfere with each other. If you want to execute multiple commands at the same time, you can use a shell script that contains all the commands and call it from the action file or just chain them with `&&`.

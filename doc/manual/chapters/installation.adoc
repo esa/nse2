@@ -1,0 +1,25 @@
+NSE2 was designed to be easy to install and set up, allowing users to quickly get started with network simulation and emulation. While it has been designed mainly for Linux systems, it can in theory run on any system that supports Docker. 
+This section provides detailed instructions on how to install NSE2 on your system.
+
+=== Prerequisites
+
+Before installing NSE2, ensure that you have the following prerequisites:
+
+* A compatible operating system (Linux, macOS, or Windows)
+* Python 3.10 or higher
+* pip (Python package installer)
+* Git (for cloning the repository)
+* Docker (for containerized environments)
+* Docker Compose
+
+NOTE: In theory, podman can be used instead of Docker, but it is not tested. Also, it must be used with the proper `docker compose` and not `podman-compose`.
+
+
+=== Installation Steps
+
+. Clone the NSE2 repository from GitHub: `git clone https://github.com/esa/nse2.git`
+. Navigate to the NSE2 directory: `cd nse2`
+. Create a virtual environment: `python -m venv .venv`
+. Activate the virtual environment: `source .venv/bin/activate`
+. Install the required Python packages: `pip install -r requirements.txt`
+. Install NSE2: `./install_symlinks.sh`

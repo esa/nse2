@@ -1,0 +1,29 @@
+{
+  "title": "Simple NSE2 Example",
+  "description": "A very simple three node dynamic network scenario.",
+  "background": "extras/background.jpg",
+  "links": "tmp/compose.netmap",
+  "nodes": [
+    {
+      "name": "n1",
+      "type": "computer",
+      "x": 657,
+      "y": 634,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "n2",
+      "type": "computer",
+      "x": 693,
+      "y": 384,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "n3",
+      "type": "settings_input_antenna",
+      "x": 570,
+      "y": 292,
+      "color": "SkyBlue"
+    }
+  ]
+}

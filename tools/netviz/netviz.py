@@ -163,34 +163,25 @@ def create_terminal(node: Node):
         print("Terminal closed")
 
 
+
 with ui.card().classes("no-shadow self-center w-[1200px]") as card:
-    with ui.column():
-        ui.markdown(
-            f"""
-        ## {config["title"]}
+    ui.markdown(
+        f"""
+    ## {config["title"]}
 
-        *{config["description"]}*
+    *{config["description"]}*
 
-                    """
+                """
+    )
+    with ui.row():
+        ii = ui.interactive_image(
+            background,
+            content="",
+            on_mouse=mouse_handler,
+            events=["mousedown", "mouseup"],
+            cross=True,
         )
-        with ui.row():
-            ii = ui.interactive_image(
-                background,
-                content="",
-                on_mouse=mouse_handler,
-                events=["mousedown", "mouseup"],
-                cross=True,
-            )
-
-            with ui.column():
-                for node in config["nodes"]:
-                    print(node["name"])
-                    ui.button(
-                        node["name"],
-                        icon=node["type"],
-                        on_click=lambda n=node["name"]: btn_click(n),
-                    )
-        log = ui.log().classes("w-full")
+    log = ui.log().classes("w-full")
 
 
 with ui.footer():

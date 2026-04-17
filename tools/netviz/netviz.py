@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from nicegui import ui, events
+from nicegui import ui, events, core
+from functools import partial
+import shutil
+import signal
 from typing import TypedDict, cast
+import pty
 import argparse
 import json
 import os
@@ -50,6 +54,9 @@ if "links" not in config:
     netmap_filename = None
 else:
     netmap_filename = config["links"]
+
+DOCKER_PATH = cast(str, shutil.which("docker"))
+assert DOCKER_PATH is not None, "docker executable not found in PATH"
 
 # load background file as base64 string
 # with open(background, "rb") as f:
@@ -109,13 +116,51 @@ def draw_netmap():
     ii.content = content
 
 
-def btn_click(node_name: str):
-    ui.notify("Opening terminal on " + node_name)
-    cmd = f"docker exec -it {node_name} /bin/bash"
-    xcmd = f"xterm -bg black -fg white -geometry 100x30 -title {node_name} -e {cmd} &"
+def create_terminal(node: Node):
+    terminal = ui.xterm().classes("size-full")
 
-    os.system(xcmd)
-    # print("clicked: " + node_name)
+    pty_pid, pty_fd = pty.fork()
+    if pty_pid == pty.CHILD:
+        os.execv(
+            DOCKER_PATH,
+            ["docker", "exec", "-it", node["name"], "/bin/bash"],
+        )
+
+    if core.loop is not None:
+
+        @partial(core.loop.add_reader, pty_fd)
+        def pty_to_terminal():
+            try:
+                data = os.read(pty_fd, 1024)
+            except OSError:
+                print("Stopping reading from pty")
+                if core.loop is not None:
+                    core.loop.remove_reader(pty_fd)
+            else:
+                terminal.write(data)
+
+    @terminal.on_data
+    def terminal_to_pty(event: events.XtermDataEventArguments):
+        try:
+            os.write(pty_fd, event.data.encode("utf-8"))
+        except OSError:
+            pass
+
+    @terminal.on_resize
+    def resize_terminal(event: events.XtermDataEventArguments):
+        try:
+            os.write(pty_fd, event.data.encode("utf-8"))
+        except OSError:
+            pass
+
+    @ui.context.client.on_delete
+    def kill_bash():
+        try:
+            os.close(pty_fd)
+        except OSError:
+            pass
+        os.kill(pty_pid, signal.SIGKILL)
+        print("Terminal closed")
 
 
 with ui.card().classes("no-shadow self-center w-[1200px]") as card:
@@ -146,6 +191,18 @@ with ui.card().classes("no-shadow self-center w-[1200px]") as card:
                         on_click=lambda n=node["name"]: btn_click(n),
                     )
         log = ui.log().classes("w-full")
+
+
+with ui.footer():
+    with ui.expansion("Terminals") as expansion:
+        with ui.tabs() as tabs:
+            for node in config["nodes"]:
+                ui.tab(node["name"], icon=node["type"])
+        with ui.tab_panels(tabs, value="h").classes("w-full"):
+            for node in config["nodes"]:
+                with ui.tab_panel(node["name"]):
+                    create_terminal(node)
+
 
 log_file = "tmp/main.log"
 f = subprocess.Popen(

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from nicegui import ui, events
+from typing import TypedDict, cast
 import argparse
 import json
 import os
@@ -9,20 +10,42 @@ import time
 import subprocess
 import select
 
+
+class Node(TypedDict):
+    name: str
+    type: str
+    x: int
+    y: int
+    color: str
+
+
+class VisConfig(TypedDict):
+    title: str
+    description: str
+    background: str
+    links: str
+    nodes: list[Node]
+
+
+def load_config(path: str) -> VisConfig:
+    with open(path) as config_file:
+        return json.load(config_file)
+
+
 print("Starting Network Visualization")
 parser = argparse.ArgumentParser()
 parser.add_argument("config", help="network visualization config file to load")
 args = parser.parse_args()
 
-background = "background.jpg"
-
 vizjson_filename = args.config
-config = json.load(open(vizjson_filename))
+config = load_config(vizjson_filename)
 if "background" in config:
     background = config["background"]
+else:
+    background = "background.jpg"
 # print(config)
 
-if not "links" in config:
+if "links" not in config:
     print("WARNING: No links file provided in config")
     netmap_filename = None
 else:
@@ -41,7 +64,9 @@ def add_marker(x: int, y: int, label: str, color: str):
     return marker
 
 
-def add_link(node1: str, node2: str, color: str = "green", dashed: bool = False):
+def add_link(
+    node1: Node, node2: Node, color: str = "green", dashed: bool = False
+) -> str:
     if dashed:
         now = int(time.time() * 10) % 5
         return f'<line x1="{node1["x"]}" y1="{node1["y"]}" x2="{node2["x"]}" y2="{node2["y"]}" stroke="{color}" stroke-width="4" stroke-dasharray="5,5" stroke-dashoffset="{now*2}" />'

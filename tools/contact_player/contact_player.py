@@ -10,6 +10,8 @@ import sys
 import os
 import yaml
 import socket
+from itertools import combinations
+from typing import cast
 
 
 def load_scenario(path):
@@ -60,7 +62,7 @@ args = parser.parse_args()
 
 scenario = load_scenario(args.scenario)
 
-netmap = args.map_network
+netmap = cast(bool, args.map_network)
 
 mapping = {}
 nodes = {}
@@ -88,11 +90,16 @@ def find_common_subnet_between_nodes(node1: str, node2: str, nodes: dict) -> str
     return None
 
 
-def get_dev_for_subnet(node: str, subnet: str, nodes: dict) -> str:
-    return nodes[node][subnet]["dev"]
+def get_dev_for_subnet(node: str, subnet: str, nodes: dict[str, Node]) -> str:
+    return nodes[node].interfaces[subnet].dev
 
 
-def set_link(contact: CoreContact, deactivate=False, command="change", symmetric=False):
+def set_link(
+    contact: CoreContact,
+    deactivate: bool = False,
+    command: str = "change",
+    symmetric: bool = False,
+):
     node1 = contact.nodes[0]
     node2 = contact.nodes[1]
 
@@ -132,18 +139,11 @@ def set_link(contact: CoreContact, deactivate=False, command="change", symmetric
 
 
 # check all node combinations for common subnets/links
-
-for n1 in nodes.keys():
-    for n2 in nodes.keys():
-        if n1 == n2:
-            continue
-        link = find_common_subnet_between_nodes(n1, n2, nodes)
-        if link is not None:
-            # sort n1 and n2 to avoid duplicates
-            l = sorted([n1, n2])
-            l.append("-")
-            links.append(l)
-links = list(set([tuple(l) for l in links]))
+links: list[tuple[str, str, str]] = [
+    (a, b, "-")
+    for a, b in combinations(nodes, 2)
+    if find_common_subnet_between_nodes(a, b, nodes) is not None
+]
 
 # print(mapping)
 # print(nodes)
@@ -153,8 +153,24 @@ scenario_name = os.path.basename(args.scenario)
 scenario_name = os.path.splitext(scenario_name)[0]
 
 
-def get_pure_node_links(links: list) -> set:
-    pure_node_links = set()
+# TODO: maybe completely useless, since `links` should never be that, I think
+# but not sure. Therefor check if needed, maybe remove this function if not
+def get_pure_node_links(links: list[tuple[str, str, str]]) -> set[tuple[str, str, str]]:
+    """Resolves interface identifiers to node names and deduplicates links.
+
+    Converts links that reference specific network interfaces (e.g. ``dev:pcc_gs1``)
+    into plain node-to-node links, then deduplicates by sorting each pair
+    so that ``(pcc, gs1)`` and ``(gs1, pcc)`` are treated as the same link.
+
+    Args:
+        links: Raw link tuples of the form ``(endpoint_a, endpoint_b, link_type)``,
+            where either endpoint may be a ``dev:<node>_<node>`` interface reference.
+
+    Returns:
+        A set of deduplicated 3-tuples ``(node_a, node_b, link_type)`` with
+        node names sorted alphabetically and all interface references resolved.
+    """
+    pure_node_links: set[tuple[str, str, str]] = set()
     for l in links:
         # print("Link: ", l)
         nodes = [l[0], l[1]]
@@ -162,7 +178,6 @@ def get_pure_node_links(links: list) -> set:
 
         if l[0].startswith("dev:"):
             dev_str = l[0].split(":")[1]
-            other_node = l[1]
             components = dev_str.split("_")
             if len(components) >= 2:
                 if components[0] == l[1]:
@@ -175,7 +190,6 @@ def get_pure_node_links(links: list) -> set:
                 )
         if l[1].startswith("dev:"):
             dev_str = l[1].split(":")[1]
-            other_node = l[0]
             components = dev_str.split("_")
             if len(components) >= 2:
                 if components[0] == l[0]:
@@ -192,7 +206,16 @@ def get_pure_node_links(links: list) -> set:
     return pure_node_links
 
 
-def update_netmap(netmap: bool, scenario_name: str, links: list):
+def update_netmap(
+    netmap: bool, scenario_name: str, links: list[tuple[str, str, str]]
+) -> None:
+    """Writes or updates resolved node links to a .netmap file in the tmp/ directory.
+
+    Args:
+        netmap: When False, this function does nothing.
+        scenario_name: Used as the output filename (tmp/<scenario_name>.netmap).
+        links: Raw link tuples to resolve and write.
+    """
     if netmap:
         # check if tmp directory exists
         if not os.path.exists("tmp"):
@@ -362,7 +385,7 @@ while True:
                 response = "\n".join([f"{l[0]} {l[2]} {l[1]}" for l in pure_node_links])
                 control_socket.sendto(response.encode(), addr)
 
-        except socket.error as e:
+        except socket.error:
             pass
 
         if sleep_time - time_slept < 1:

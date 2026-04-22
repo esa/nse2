@@ -1,50 +1,17 @@
 #!/usr/bin/env python3
 
-
-from tc_netem import *
-from ccp import *
 import argparse
-import time
-import signal
-import sys
 import os
-import yaml
+import signal
 import socket
+import sys
+import time
 from itertools import combinations
 from typing import cast
 
-
-def load_scenario(path):
-    """
-    Loads the docker compose scenario from the passed filepath.
-    """
-    print(f"Loading scenario from {path}.")
-    nodes: dict[str, dict] = {}
-
-    with open(path) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-        if "x-description" in config:
-            print(f"Description: {config['x-description']}")
-
-        services = config["services"]
-        for name, item in services.items():
-            env_vars: list[str] = item["environment"]
-            node_id = next(var for var in env_vars if var.startswith("NODE_ID"))
-            node_eID = f"ipn:{node_id.split('=')[1]}.0"
-            new_node = {"eid": node_eID, "name": name, "networks": {}, "IPs": {}}
-
-            for net_name, value in item["networks"].items():
-                new_node["networks"][net_name] = True
-                new_node["IPs"][net_name] = value["ipv4_address"]
-                print(
-                    f"Node {node_eID} connected to network {net_name} with {value['ipv4_address']}"
-                )
-
-            nodes[node_eID] = new_node
-
-    print(f"Created {len(nodes)} nodes.")
-    return nodes
-
+from tools.contact_player.ccp import ContactState, CoreContact, CoreContactPlan
+from tools.contact_player.tc_netem import run_in_container, set_on_interface
+from tools.lib.scenario import NetworkInterface, Node, nodes_from_compose
 
 # parse scenario filename from args
 parser = argparse.ArgumentParser()
@@ -60,32 +27,29 @@ parser.add_argument("ccp", help="core contact plan to load")
 args = parser.parse_args()
 
 
-scenario = load_scenario(args.scenario)
+nodes = nodes_from_compose(args.scenario)
 
 netmap = cast(bool, args.map_network)
 
 mapping = {}
-nodes = {}
-links = []
 
+for node in nodes.values():
+    mapping[node.id] = node.name
 
-for k, v in scenario.items():
-    # extract node number from key
-    node_id = k.split(":")[1].split(".")[0]
-    mapping[node_id] = v.get("name")
-    for k, v2 in v["IPs"].items():
-        res = run_in_container(v.get("name"), f"ip a | grep {v2}")
-        if len(res) == 0:
-            print("Error: IP not found")
+    for net_name, ip in node.ips.items():
+        res = run_in_container(node.name, f"ip a | grep {ip}")
+        if not res:
+            print(f"Error: IP {ip} not found in container {node.name}")
             continue
-        net_if = res.rsplit(" ", maxsplit=1)[1].strip()
-        v["IPs"][k] = {"dev": net_if, "ip": v2}
-    nodes[v.get("name")] = v["IPs"]
+        dev = res.rsplit(" ", maxsplit=1)[1].strip()
+        node.interfaces[net_name] = NetworkInterface(dev=dev, ip=ip)
 
 
-def find_common_subnet_between_nodes(node1: str, node2: str, nodes: dict) -> str:
-    for k in nodes[node1].keys():
-        if k in nodes[node2]:
+def find_common_subnet_between_nodes(
+    node1: str, node2: str, nodes: dict[str, Node]
+) -> str | None:
+    for k in nodes[node1].interfaces.keys():
+        if k in nodes[node2].interfaces:
             return k
     return None
 

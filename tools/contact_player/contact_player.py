@@ -12,16 +12,40 @@ from tools.contact_player.ccp import ContactState, CoreContact, CoreContactPlan
 from tools.contact_player.tc_netem import run_in_container, set_on_interface
 from tools.lib.scenario import NetworkInterface, Node, nodes_from_compose
 
-# parse scenario filename from args
-parser = argparse.ArgumentParser()
-parser.add_argument("-l", "--loop", metavar="LOOP", type=bool, help="Override looping")
-parser.add_argument(
-    "-m", "--map-network", help="Map network links", action="store_true"
-)
-parser.add_argument("scenario", help="scenario file to load")
-parser.add_argument("ccp", help="core contact plan to load")
-args = parser.parse_args()
 
+def parse_args() -> argparse.Namespace:
+    """Parses command-line arguments.
+
+    Returns:
+        Namespace with attributes: ``scenario`` (str), ``contact_plan`` (str),
+        ``loop`` (bool | None), ``map_network`` (bool).
+    """
+    parser = argparse.ArgumentParser(
+        description="Read out the network connections for the DTN simulation scenario from a Docker Compose file and contact plan.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "-l",
+        "--loop",
+        action=argparse.BooleanOptionalAction,
+        help="Override looping behaviour defined in the contact plan",
+    )
+    parser.add_argument(
+        "-m",
+        "--map-network",
+        action="store_true",
+        help="Discover and write network links to tmp/<scenario>.netmap",
+    )
+    parser.add_argument(
+        "scenario", help="Path to the Docker Compose scenario file (.yml)"
+    )
+    parser.add_argument(
+        "contact_plan", help="Path to the core contact plan file (.ccp)"
+    )
+    return parser.parse_args()
+
+
+args = parse_args()
 
 nodes = nodes_from_compose(args.scenario)
 
@@ -196,7 +220,7 @@ def update_netmap(
 
 print(links)
 
-plan = CoreContactPlan.from_file(args.ccp, mapping=mapping)
+plan = CoreContactPlan.from_file(args.contact_plan, mapping=mapping)
 
 # get list of unique nodes from all contacts in plan
 container_devs: list[tuple[str, str]] = []
@@ -350,8 +374,10 @@ while True:
                     f"{cur_time + int(time_slept)} {next_event}".encode(), addr
                 )
             if data == b"scenario":
-                print(f"cmd: Current scenario is {args.scenario} with {args.ccp}")
-                response = f"{args.scenario} {args.ccp}"
+                print(
+                    f"cmd: Current scenario is {args.scenario} with {args.contact_plan}"
+                )
+                response = f"{args.scenario} {args.contact_plan}"
                 control_socket.sendto(response.encode(), addr)
 
             if data == b"links":

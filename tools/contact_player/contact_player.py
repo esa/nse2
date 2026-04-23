@@ -52,24 +52,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def populate_node_interfaces(nodes: dict[str, Node]) -> None:
+    """Populates ``node.interfaces`` in-place by inspecting running containers.
+
+    For each node, runs ``ip a`` inside its container to resolve the network
+    interface name associated with each configured IP address.
+
+    Args:
+        nodes: Map of node name to Node, as returned by ``nodes_from_compose()``.
+    """
+    for node in nodes.values():
+        for net_name, ip in node.ips.items():
+            res = run_in_container(node.name, f"ip a | grep {ip}")
+            if not res:
+                print(f"Error: IP {ip} not found in container {node.name}")
+                continue
+            dev = res.rsplit(" ", maxsplit=1)[1].strip()
+            node.interfaces[net_name] = NetworkInterface(dev=dev, ip=ip)
+
+
 args = parse_args()
 
 nodes = nodes_from_compose(args.scenario)
 
 netmap = cast(bool, args.map_network)
 
-mapping = {}
-
-for node in nodes.values():
-    mapping[node.id] = node.name
-
-    for net_name, ip in node.ips.items():
-        res = run_in_container(node.name, f"ip a | grep {ip}")
-        if not res:
-            print(f"Error: IP {ip} not found in container {node.name}")
-            continue
-        dev = res.rsplit(" ", maxsplit=1)[1].strip()
-        node.interfaces[net_name] = NetworkInterface(dev=dev, ip=ip)
+populate_node_interfaces(nodes)
 
 
 def find_common_subnet_between_nodes(
@@ -222,6 +230,7 @@ def update_netmap(
 
 print(links)
 
+mapping = {node.id: node.name for node in nodes.values()}
 plan = CoreContactPlan.from_file(args.contact_plan, mapping=mapping)
 
 # get list of unique nodes from all contacts in plan

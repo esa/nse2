@@ -71,15 +71,6 @@ def populate_node_interfaces(nodes: dict[str, Node]) -> None:
             node.interfaces[net_name] = NetworkInterface(dev=dev, ip=ip)
 
 
-args = parse_args()
-
-nodes = nodes_from_compose(args.scenario)
-
-netmap = cast(bool, args.map_network)
-
-populate_node_interfaces(nodes)
-
-
 def find_common_subnet_between_nodes(
     node1: str, node2: str, nodes: dict[str, Node]
 ) -> str | None:
@@ -135,21 +126,6 @@ def set_link(
             delay=contact.delay,
             jitter=contact.jitter,
         )
-
-
-# check all node combinations for common subnets/links
-links: list[tuple[str, str, str]] = [
-    (a, b, "-")
-    for a, b in combinations(nodes, 2)
-    if find_common_subnet_between_nodes(a, b, nodes) is not None
-]
-
-# print(mapping)
-# print(nodes)
-# print(links)
-
-scenario_name = os.path.basename(args.scenario)
-scenario_name = os.path.splitext(scenario_name)[0]
 
 
 # TODO: maybe completely useless, since `links` should never be that, I think
@@ -226,6 +202,29 @@ def update_netmap(
         with open(f"tmp/{scenario_name}.netmap", "w") as f:
             for l in pure_node_links:
                 f.write(f"{l[0]} {l[2]} {l[1]}\n")
+
+
+args = parse_args()
+
+nodes = nodes_from_compose(args.scenario)
+
+netmap = cast(bool, args.map_network)
+
+populate_node_interfaces(nodes)
+
+# check all node combinations for common subnets/links
+links: list[tuple[str, str, str]] = [
+    (a, b, "-")
+    for a, b in combinations(nodes, 2)
+    if find_common_subnet_between_nodes(a, b, nodes) is not None
+]
+
+# print(mapping)
+# print(nodes)
+# print(links)
+
+scenario_name = os.path.basename(args.scenario)
+scenario_name = os.path.splitext(scenario_name)[0]
 
 
 print(links)

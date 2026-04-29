@@ -1,0 +1,147 @@
+#!/bin/bash
+
+declare -A commands
+declare -A nodes
+declare -A repeated_interval
+declare -A repeated_actions
+declare -A final_actions
+
+EXEC() {
+  # check if number of arguments is correct
+  if [ "$#" -ne 3 ]; then
+    echo "Illegal number of parameters"
+    echo "Usage: EXEC <time in seconds> <node> <action>"
+    exit 1
+  fi
+  time=$1
+  node=$2
+  action=$3
+  # if commands table does not contain time, create an empty array
+  if [ -z "${commands[$time]}" ]; then
+    commands["$time"]=""
+  fi
+  # append the node and command to the array
+  commands[$time]+="$node "
+  #(sleep $time && docker exec -t $node /bin/bash -c "$action" ) &
+  nodes["$node,$time"]="$action"
+}
+
+FINALLY() {
+  # check if number of arguments is correct
+  if [ "$#" -ne 2 ]; then
+    echo "Illegal number of parameters"
+    echo "Usage: EXEC <node> <action>"
+    exit 1
+  fi
+  node=$1
+  action=$2
+  # if commands table does not contain node, create an empty array
+  if [ -z "${final_actions[$node]}" ]; then
+    final_actions["$node"]=""
+  fi
+  # append the node and command to the array
+  final_actions[$node]+="$action ; "
+}
+
+REPEAT() {
+  # check if blobal variable DURATION is set
+  if [ -z "$DURATION" ]; then
+    echo "Warning: DURATION variable is not, REPEATing till infinity"
+    DURATION=-1
+    # exit 1
+  fi
+  # check if number of arguments is correct
+  if [ "$#" -ne 4 ]; then
+    echo "Illegal number of parameters"
+    echo "Usage: EXEC <time in seconds> <interval in seconds> <node> <action>"
+    exit 1
+  fi
+  time=$1
+  interval=$2
+  node=$3
+  action=$4
+
+
+  # if commands table does not contain time, create an empty array
+  if [ -z "${commands[$time]}" ]; then
+    commands["$time"]=""
+  fi
+  # append the node and command to the array
+  commands[$time]+="$node "
+  repeated_actions["$node,$time"]="$action"
+  repeated_interval["$node,$time"]="$interval"
+}
+
+DO_REPEATED() {
+  local CUR_TIME=$PASSED_TIME
+  # repeat while PASSED_TIME is less than END
+  local SLEEPTIME=$1
+  while true; do
+    if [ "$DURATION" -gt "0" ]; then
+      # if sleep is longer than the defined duration, adjust it
+      if [ "$((CUR_TIME + $1))" -gt "$DURATION" ]; then
+        SLEEPTIME=$((DURATION - CUR_TIME))
+      fi
+      # if time is up, break the loop
+      if [ "$CUR_TIME" -ge "$DURATION" ]; then
+        break
+      fi
+    fi
+    echo "[$CUR_TIME]   $node: $action"
+    docker exec -t $2 /bin/bash -c "$3" &
+    
+    sleep $SLEEPTIME
+    CUR_TIME=$((CUR_TIME + $1))
+  done
+}
+
+if [ "$#" -ne 1 ]; then
+  echo "Illegal number of parameters"
+  echo "Usage: $0 <action_file>"
+  exit 1
+fi
+
+# load the action file
+. $1
+
+cleanup () {
+  echo "Cleaning up..."
+  # loop over final actions and execute them on the nodes
+  for node in "${!final_actions[@]}"; do
+    action=${final_actions["$node"]}
+    echo "   $node: $action true"
+    cmd="docker exec -t $node /bin/bash -c \"$action true\""
+    # printf '[DBG] %s\n' "$cmd"
+    docker exec -t $node /bin/bash -c "$action true" &
+  done
+}
+
+trap cleanup EXIT
+
+times=$(printf '%s\n' "${!commands[@]}" | sort -g)
+echo $times
+
+PASSED_TIME=0
+# execute the commands
+for time in $times; do
+  sleep $((time - PASSED_TIME))
+  PASSED_TIME=$time
+
+  echo "[$time] Executing commands on: ${commands[$time]}"  
+  for node in ${commands[$time]}; do
+    # check if a action is in nodes table and execute it
+    if [ "${nodes["$node,$time"]+isset}" ]; then
+      action=${nodes["$node,$time"]}
+      echo "[$time]   $node: $action"
+      docker exec -t $node /bin/bash -c "$action" & 
+    fi
+    if [ "${repeated_actions["$node,$time"]+isset}" ]; then
+      action=${repeated_actions["$node,$time"]}
+      interval=${repeated_interval["$node,$time"]}
+      echo "[$time] / $interval  $node: $action"
+      DO_REPEATED $interval $node "$action" &
+    fi
+  done
+done
+
+wait

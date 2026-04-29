@@ -1,0 +1,16 @@
+# DURATION is optional
+# DURATION=120
+
+# start a process to log the link properties every 10 seconds on the ground stations
+EXEC 0 gs1 "watch -n 10 tc qdisc > /tmp/qdisc.log" 
+EXEC 0 gs2 "watch -n 10 tc qdisc > /tmp/qdisc.log" 
+
+# at timestamp 5 start to send ping (200 bytes) every 10s to gs1 from eosat
+REPEAT 5 10 eosat "(date ; ping -c 1 -s 200 -W1 -w1 gs1; echo "----------------------") >> /tmp/gs1.txt"
+
+# at timestamp 10 start to send ping (200 bytes) every 10s to gs2 from eosat
+REPEAT 10 10 eosat "(date ; ping -c 1 -s 200 -W1 -w1 gs2; echo "----------------------") >> /tmp/gs2.txt"
+
+# be nice and shut down long running processes
+FINALLY gs1 "pkill -f watch"
+FINALLY gs2 "pkill -f watch"

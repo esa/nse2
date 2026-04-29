@@ -1,0 +1,96 @@
+{
+  "title": "Mars Communications",
+  "description": "The Mars Communications scenario.",
+  "background": "extras/background.jpg",
+  "links": "tmp/mc.compose.netmap",
+  "nodes": [
+    {
+      "name": "r1cc",
+      "type": "computer",
+      "x": 100,
+      "y": 162,
+      "color": "#32a834",
+      "e_id": "ipn:10.0"
+    },
+    {
+      "name": "r2cc",
+      "type": "computer",
+      "x": 73,
+      "y": 326,
+      "color": "#e3e340",
+      "e_id": "ipn:20.0"
+    },
+    {
+      "name": "rcc1",
+      "type": "computer",
+      "x": 211,
+      "y": 157,
+      "color": "#fc7703",
+      "e_id": "ipn:100.0"
+    },
+    {
+      "name": "rcc2",
+      "type": "computer",
+      "x": 213,
+      "y": 296,
+      "color": "#0384fc",
+      "e_id": "ipn:200.0"
+    },
+    {
+      "name": "gs1",
+      "type": "settings_input_antenna",
+      "x": 358,
+      "y": 220,
+      "color": "#fc7703",
+      "e_id": "ipn:110.0"
+    },
+    {
+      "name": "gs2",
+      "type": "settings_input_antenna",
+      "x": 332,
+      "y": 344,
+      "color": "#0384fc",
+      "e_id": "ipn:210.0"
+    },
+    {
+      "name": "relay1",
+      "type": "satellite_alt",
+      "x": 749,
+      "y": 94,
+      "color": "#fc7703",
+      "e_id": "ipn:120.0"
+    },
+    {
+      "name": "relay2",
+      "type": "satellite_alt",
+      "x": 651,
+      "y": 260,
+      "color": "#0384fc",
+      "e_id": "ipn:220.0"
+    },
+    {
+      "name": "relay3",
+      "type": "satellite_alt",
+      "x": 739,
+      "y": 430,
+      "color": "#0384fc",
+      "e_id": "ipn:221.0"
+    },
+    {
+      "name": "rover1",
+      "type": "snowmobile",
+      "x": 883,
+      "y": 223,
+      "color": "#32a834",
+      "e_id": "ipn:15.0"
+    },
+    {
+      "name": "rover2",
+      "type": "snowmobile",
+      "x": 896,
+      "y": 392,
+      "color": "#e3e340",
+      "e_id": "ipn:25.0"
+    }
+  ]
+}

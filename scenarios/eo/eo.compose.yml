@@ -1,0 +1,206 @@
+
+name: 'eo'
+
+services:
+  pcc:
+    hostname: pcc
+    container_name: pcc
+    image: alpine
+    cap_add:
+      - NET_ADMIN
+    networks:
+      
+      gs2_pcc:
+        ipv4_address: 172.33.1.3
+
+      gs1_pcc:
+        ipv4_address: 172.33.2.3
+
+    environment:
+      
+      - X=461.0
+      - Y=501.0
+      - TYPE=Host
+      - NODE_ID=100
+    privileged: true
+    entrypoint: sh -c "apk add bash iproute2-tc ;  tail -f /dev/null"
+
+
+  gs2:
+    hostname: gs2
+    container_name: gs2
+    image: alpine
+    cap_add:
+      - NET_ADMIN
+    networks:
+      
+      gs2_pcc:
+        ipv4_address: 172.33.1.2
+
+      gs2_mcc:
+        ipv4_address: 172.33.3.2
+
+      eosat_gs2_lo:
+        ipv4_address: 172.33.4.3
+      
+      eosat_gs2_hi:
+        ipv4_address: 172.33.8.3
+
+    environment:
+      
+      - X=461.0
+      - Y=316.0
+      - TYPE=Host
+      - NODE_ID=30
+    privileged: true
+    entrypoint: sh -c "apk add bash iproute2-tc ;  tail -f /dev/null"
+
+
+  mcc:
+    hostname: mcc
+    container_name: mcc
+    image: alpine
+    cap_add:
+      - NET_ADMIN
+    networks:
+      
+      gs2_mcc:
+        ipv4_address: 172.33.3.3
+
+      gs1_mcc:
+        ipv4_address: 172.33.5.3
+
+    environment:
+      
+      - X=198.0
+      - Y=510.0
+      - TYPE=Host
+      - NODE_ID=1
+    privileged: true
+    entrypoint: sh -c "apk add bash iproute2-tc ;  tail -f /dev/null"
+
+
+  eosat:
+    hostname: eosat
+    container_name: eosat
+    image: alpine
+    cap_add:
+      - NET_ADMIN
+    networks:
+      
+      eosat_gs2_lo:
+        ipv4_address: 172.33.4.2
+      
+      eosat_gs2_hi:
+        ipv4_address: 172.33.8.2
+
+      eosat_gs1_lo:
+        ipv4_address: 172.33.6.2
+      
+      eosat_gs1_hi:
+        ipv4_address: 172.33.7.2
+
+    environment:
+      
+      - X=330.0
+      - Y=157.0
+      - TYPE=Host
+      - NODE_ID=50
+    privileged: true
+    entrypoint: sh -c "apk add bash iproute2-tc ;  tail -f /dev/null"
+
+
+  gs1:
+    hostname: gs1
+    container_name: gs1
+    image: alpine
+    cap_add:
+      - NET_ADMIN
+    networks:
+      
+      gs1_pcc:
+        ipv4_address: 172.33.2.2
+
+      gs1_mcc:
+        ipv4_address: 172.33.5.2
+
+      eosat_gs1_lo:
+        ipv4_address: 172.33.6.3
+      
+      eosat_gs1_hi:
+        ipv4_address: 172.33.7.3
+
+    environment:
+      
+      - X=195.0
+      - Y=322.0
+      - TYPE=Host
+      - NODE_ID=20
+    privileged: true
+    entrypoint: sh -c "apk add bash iproute2-tc ;  tail -f /dev/null"
+
+networks:
+  gs2_pcc:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.1.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: gs2_pcc_
+
+  gs1_pcc:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.2.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: gs1_pcc_
+
+  gs2_mcc:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.3.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: gs2_mcc_
+
+  eosat_gs2_lo:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.4.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: eosat_gs2_lo_
+
+  gs1_mcc:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.5.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: gs1_mcc_
+
+  eosat_gs1_lo:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.6.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: eosat_gs1_lo_
+  
+  eosat_gs1_hi:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.7.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: eosat_gs1_hi_
+  
+  eosat_gs2_hi:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.33.8.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: eosat_gs2_hi_
+

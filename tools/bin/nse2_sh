@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if [ "$#" -lt 1 ]; then
+  echo "Illegal number of parameters"
+  echo "Usage: $0 <container_name> [shell or command]"
+  exit 1
+fi
+CMD="bash"
+if [ "$#" -eq 2 ]; then
+  CMD=$2
+fi
+
+docker exec -it $1 $CMD

@@ -1,0 +1,9 @@
+gs.+ relay.+ 30mbit
+rover.+ relay.+ 15mbit
+rover.+ lgw 15mbit
+gs.+ rover.+ 30mbit
+gs.+ base.+ 30mbit
+gs.+ lgw 30mbit
+lgw relay.+ 30mbit
+base.+ relay.+ 15mbit
+base.+ lgw 15mbit

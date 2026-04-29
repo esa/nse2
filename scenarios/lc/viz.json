@@ -1,0 +1,112 @@
+{
+  "title": "Lunar Communications",
+  "description": "The Lunar Communications scenario with 13 nodes.",
+  "background": "extras/background.jpg",
+  "links": "tmp/lc.compose.netmap",
+  "nodes": [
+    {
+      "name": "rcc1",
+      "x": 225.0,
+      "y": 41.0,
+      "e_id": "ipn:100.0",
+      "color": "#fc7703",
+      "type": "computer"
+    },
+    {
+      "name": "gs1",
+      "x": 349.0,
+      "y": 120.0,
+      "e_id": "ipn:110.0",
+      "color": "#fc7703",
+      "type": "computer"
+    },
+    {
+      "name": "rcc2",
+      "x": 225.0,
+      "y": 220.0,
+      "e_id": "ipn:200.0",
+      "color": "#0384fc",
+      "type": "computer"
+    },
+    {
+      "name": "gs2",
+      "x": 304.0,
+      "y": 282.0,
+      "e_id": "ipn:210.0",
+      "color": "#0384fc",
+      "type": "computer"
+    },
+    {
+      "name": "lgw",
+      "x": 535.0,
+      "y": 436.0,
+      "e_id": "ipn:220.0",
+      "color": "#0384fc",
+      "type": "computer"
+    },
+    {
+      "name": "base1",
+      "x": 903.0,
+      "y": 321.0,
+      "e_id": "ipn:11.0",
+      "color": "#e3e340",
+      "type": "computer"
+    },
+    {
+      "name": "user1",
+      "x": 606.0,
+      "y": 491.0,
+      "e_id": "ipn:31.0",
+      "color": "#a832a6",
+      "type": "computer"
+    },
+    {
+      "name": "rover1",
+      "x": 932.0,
+      "y": 247.0,
+      "e_id": "ipn:21.0",
+      "color": "#32a834",
+      "type": "computer"
+    },
+    {
+      "name": "u1cc",
+      "x": 89.0,
+      "y": 175.0,
+      "e_id": "ipn:30.0",
+      "color": "#a832a6",
+      "type": "computer"
+    },
+    {
+      "name": "b1cc",
+      "x": 106.0,
+      "y": 72.0,
+      "e_id": "ipn:10.0",
+      "color": "#e3e340",
+      "type": "computer"
+    },
+    {
+      "name": "r1cc",
+      "x": 134.0,
+      "y": 288.0,
+      "e_id": "ipn:20.0",
+      "color": "#32a834",
+      "type": "computer"
+    },
+    {
+      "name": "relay1",
+      "x": 826.0,
+      "y": 92.0,
+      "e_id": "ipn:120.0",
+      "color": "#fc7703",
+      "type": "computer"
+    },
+    {
+      "name": "relay2",
+      "x": 840.0,
+      "y": 447.0,
+      "e_id": "ipn:221.0",
+      "color": "#0384fc",
+      "type": "computer"
+    }
+  ]
+}

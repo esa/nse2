@@ -1,7 +1,55 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Tuple, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+from pydantic import BaseModel
+
+from tools.lib.scenario import NetworkInterface, Node
+
+
+class LinkProperties(BaseModel, frozen=True):
+    bandwidth: str
+    loss: float = 0.0
+    delay: float = 0.0
+    jitter: float = 0.0
+
+
+class _RawLink(BaseModel):
+    src: str
+    dst: str
+    props: LinkProperties
+
+
+class _RawContact(_RawLink):
+    begin: int
+    end: int
+
+
+class FixedLink(BaseModel, frozen=True):
+    src: Node
+    iface: NetworkInterface
+    dst: Node
+    props: LinkProperties
+
+
+class Contact(FixedLink, frozen=True):
+    begin: int
+    end: int
+
+    def is_active(self, time: int) -> bool:
+        """Return True when the contact is active at the given time."""
+        return self.begin <= time < self.end
+
+
+class ContactPlan(BaseModel):
+    loop: bool
+    fixed_links: list[FixedLink]
+    contacts: list[Contact]
+
+    def get_max_time(self) -> int:
+        """Returns the maximum time in the contact plan."""
+        return max([c.end for c in self.contacts])
 
 
 class ContactState(Enum):

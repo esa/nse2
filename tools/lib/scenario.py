@@ -4,8 +4,16 @@ from typing import override
 import yaml
 from pydantic import BaseModel
 
+from tools.contact_player.tc_netem import run_in_container
+
 NetworkName = str
+NetworkInterface = str
 IPAddress = str
+
+
+class NetworkConfig(BaseModel):
+    iface: NetworkInterface
+    ipv4: IPAddress
 
 
 class _NodeNetworkConfig(BaseModel):
@@ -70,22 +78,20 @@ class _ScenarioFile(BaseModel):
         return cls.model_validate(raw)
 
 
-class NetworkInterface(BaseModel):
-    dev: str
-    ip: str
-
-
 class Node(BaseModel, frozen=True):
     eid: str
     id: int
     name: str
-    networks: dict[str, bool]
-    ips: dict[str, str]
-    interfaces: dict[str, NetworkInterface] = {}
+    networks: dict[NetworkName, NetworkConfig]
 
     @override
     def __hash__(self) -> int:
         return hash(id)
+
+    def interfaces_toward(self, neighbor: "Node") -> list[NetworkInterface] | None:
+        """Return list of interfaces towards `neighbor`."""
+        shared = self.networks.keys() & neighbor.networks.keys()
+        return [self.networks[net].iface for net in shared] if shared else None
 
 
 NodeMap = dict[str, Node]
@@ -109,15 +115,24 @@ def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
         node_id = int(env["NODE_ID"])
         node_eid = f"ipn:{node_id}.0"
 
-        ips = {net: cfg.ipv4_address for net, cfg in service.networks.items()}
-        network_flags = {net: True for net in service.networks}
+        # legacy method for getting the interface names
+        # since Docker version v28 interface names are just network names with _0 appended
+        networks: dict[NetworkName, NetworkConfig] = {}
+        for network, conf in service.networks.items():
+            res = run_in_container(name, f"ip a | grep {conf.ipv4_address}")
+            if len(res) == 0:
+                print("Error: IP not found")
+                continue
+            iface = res.rsplit(" ", maxsplit=1)[1].strip()
+            networks[network] = NetworkConfig(iface=iface, ipv4=conf.ipv4_address)
 
-        for net, ip in ips.items():
-            print(f"Node {node_eid} connected to network {net} with {ip}")
+        # new method for getting interface names
+        # networks = {
+        #     network: NetworkConfig(iface=f"{network}_0", ipv4=conf.ipv4_address)
+        #     for network, conf in service.networks.items()
+        # }
 
-        nodes[name] = Node(
-            eid=node_eid, id=node_id, name=name, networks=network_flags, ips=ips
-        )
+        nodes[name] = Node(eid=node_eid, id=node_id, name=name, networks=networks)
 
     print(f"Created {len(nodes)} nodes.")
     return nodes

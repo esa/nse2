@@ -2,6 +2,7 @@
 
 import argparse
 import os
+from pathlib import Path
 import signal
 import socket
 import sys
@@ -15,9 +16,14 @@ from tools.contact_player.ccp import (
     ContactState,
     CoreContact,
     CoreContactPlan,
+    FixedLink,
 )
-from tools.contact_player.tc_netem import run_in_container, set_on_interface
-from tools.lib.scenario import NetworkInterface, Node, NodeMap, nodes_from_compose
+from tools.contact_player.tc_netem import set_on_interface
+from tools.lib.scenario import (
+    Node,
+    NodeMap,
+    nodes_from_compose,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,24 +75,69 @@ class ContactPlayer:
             c: ContactState.PRE for c in plan.contacts
         }
 
+    def tick(self, time: int) -> None:
+        """Advance simulation to time t, activating and deactivating contacts"""
+        time_effective = (time % self.plan.get_max_time()) if self.plan.loop else time
 
-def populate_node_interfaces(nodes: dict[str, Node]) -> None:
-    """Populates ``node.interfaces`` in-place by inspecting running containers.
+        for contact, state in self.contact_states.items():
+            if contact.is_active(time_effective):
+                if state == ContactState.PRE:
+                    print("[ %d ] Activating %s" % (time, contact))
+                    self.apply(contact)
+                    self.contact_states[contact] = ContactState.LIVE
+            else:
+                if state == ContactState.LIVE:
+                    print("[ %d ] Deactivating %s" % (time, contact))
+                    self.apply(contact, deactivate=True)
+                    self.contact_states[contact] = ContactState.POST
 
-    For each node, runs ``ip a`` inside its container to resolve the network
-    interface name associated with each configured IP address.
+    def apply(
+        self,
+        contact: Contact | FixedLink,
+        deactivate: bool = False,
+        command: str = "change",
+        symmetric: bool = False,
+    ) -> None:
+        loss = contact.props.loss
+        if deactivate:
+            loss = 100.0
 
-    Args:
-        nodes: Map of node name to Node, as returned by ``nodes_from_compose()``.
-    """
-    for node in nodes.values():
-        for net_name, ip in node.ips.items():
-            res = run_in_container(node.name, f"ip a | grep {ip}")
-            if not res:
-                print(f"Error: IP {ip} not found in container {node.name}")
-                continue
-            dev = res.rsplit(" ", maxsplit=1)[1].strip()
-            node.interfaces[net_name] = NetworkInterface(dev=dev, ip=ip)
+        set_on_interface(
+            contact.src.name,
+            contact.iface,
+            command=command,
+            loss=loss,
+            delay=contact.props.delay,
+            jitter=contact.props.jitter,
+            bandwidth=contact.props.bandwidth,
+        )
+        if symmetric:
+            iface = contact.dst.interfaces_toward(contact.src)
+            if not iface:
+                print(
+                    f"Error: did not find interface from node {contact.dst} to {contact.src}"
+                )
+            else:
+                set_on_interface(
+                    contact.dst.name,
+                    iface[0],
+                    command=command,
+                    loss=loss,
+                    delay=contact.props.delay,
+                    jitter=contact.props.jitter,
+                    bandwidth=contact.props.bandwidth,
+                )
+
+    def teardown(self) -> None:
+        """Remove all tc netem rules set by this player and delete the generated netmap file."""
+        for link in self.plan.fixed_links:
+            self.apply(link, command="del")
+        for contact in self.contact_states:
+            # TODO: I think this can also be `self.apply`, check that!
+            set_on_interface(contact.src.name, contact.iface, command="del", loss=0.0)
+        # delete the netmap file
+        netmap_file = Path("tmp") / f"{self.scenario_name}.netmap"
+        netmap_file.unlink(missing_ok=True)
 
 
 def find_common_subnet_between_nodes(
@@ -100,50 +151,6 @@ def find_common_subnet_between_nodes(
 
 def get_dev_for_subnet(node: str, subnet: str, nodes: dict[str, Node]) -> str:
     return nodes[node].interfaces[subnet].dev
-
-
-def set_link(
-    contact: CoreContact,
-    deactivate: bool = False,
-    command: str = "change",
-    symmetric: bool = False,
-):
-    node1 = contact.nodes[0]
-    node2 = contact.nodes[1]
-
-    loss = contact.loss
-    if deactivate:
-        loss = 100.0
-
-    if node2.startswith("dev:"):
-        net_dev = node2.split(":")[1] + "_0"
-    else:
-        link = find_common_subnet_between_nodes(node1, node2, nodes)
-
-        if link is None:
-            print("WARNING: Link not found for %s, %s" % (node1, node2))
-            return
-        net_dev = get_dev_for_subnet(node1, link, nodes)
-    set_on_interface(
-        node1,
-        net_dev,
-        command=command,
-        loss=loss,
-        delay=contact.delay,
-        jitter=contact.jitter,
-        bandwidth=contact.bw,
-    )
-
-    # set links symmetrically, so also on the second node
-    if symmetric:
-        set_on_interface(
-            node2,
-            get_dev_for_subnet(node2, link, nodes),
-            command="change",
-            loss=loss,
-            delay=contact.delay,
-            jitter=contact.jitter,
-        )
 
 
 # TODO: maybe completely useless, since `links` should never be that, I think
@@ -224,12 +231,17 @@ def update_netmap(
 
 def main() -> None:
     args = parse_args()
+    update_netmap_file: bool = args.map_network
+    scenario_path = Path(args.scenario)
+    nodes = nodes_from_compose(scenario_path)
+    plan = ContactPlan.from_file(args.contact_plan, nodes)
+    player = ContactPlayer(scenario_path.stem, plan, nodes)
+
+    args = parse_args()
 
     nodes = nodes_from_compose(args.scenario)
 
     netmap = cast(bool, args.map_network)
-
-    populate_node_interfaces(nodes)
 
     # check all node combinations for common subnets/links
     links: list[tuple[str, str, str]] = [
@@ -311,31 +323,20 @@ def main() -> None:
 
     update_netmap(netmap, scenario_name, links)
 
-    # setup handler to intercept ctrl c
-    def signal_handler(sig, frame):
-        global args
-        print("You pressed Ctrl+C")
-        fixed = plan.fixed
-        for contact in fixed:
-            print("Deactivating fixed contact %s" % contact)
-            set_link(contact, command="del")
-        for c, d in container_devs:
-            print(f"Removing tc netem for {c} on device {d}")
-            set_on_interface(c, d, command="del", loss=0.0)
+    # apply initial network configuration to fluctuating contacts and fixed links
+    for contact in player.contact_states:
+        player.apply(contact, command="add", deactivate=True)
+    for link in player.plan.fixed_links:
+        player.apply(link, command="add")
 
+    # setup handler to intercept ctrl c
+    def handle_sigint(sig, frame) -> None:
+        print("\nInterrupted --- tearing down links.")
+        player.teardown()
+        control_socket.close()
         sys.exit(0)
 
-    # setting packet loss to 100% for all dynamic contacts
-    for c, d in container_devs:
-        print(f"Setting up tc for {c} on device {d} with 100% loss")
-        set_on_interface(c, d, command="add", loss=100.0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    fixed = plan.fixed
-    for contact in fixed:
-        print("Activating fixed contact %s" % contact)
-        set_link(contact, command="add")
+    signal.signal(signal.SIGINT, handle_sigint)
 
     cur_time = 0
 
@@ -418,39 +419,11 @@ def main() -> None:
                 if not paused:
                     time_slept += SLEEP_DELAY
         cur_time = next_event
-        for contact, state in plan.need_activation(cur_time):
-            print("[ %d ] Activating %s" % (cur_time, contact))
-            set_link(contact, symmetric=args.symmetric)
-            l = sorted([contact.nodes[0], contact.nodes[1]])
-            l.append(".")
-            static_link = (l[0], l[1], "-")
-            if static_link in links:
-                links.remove(static_link)
-            links.append(tuple(l))
+        player.tick(cur_time)
 
-            plan.contacts[contact] = ContactState.LIVE
-
-        for contact, state in plan.need_deactivation(cur_time):
-            print("[ %d ] Deactivating %s" % (cur_time, contact))
-            set_link(contact, deactivate=True, symmetric=args.symmetric)
-            l = sorted([contact.nodes[0], contact.nodes[1]])
-            l.append(".")
-            try:
-                links.remove(tuple(l))
-            except ValueError:
-                pass
-            plan.contacts[contact] = ContactState.POST
-
-        links = list(set([tuple(l) for l in links]))
         update_netmap(netmap, scenario_name, links)
 
-    # setting packet loss to 0% for all dynamic contacts, remove netem
-    for c, d in container_devs:
-        print(f"Removing tc netem for {c} on device {d}")
-        set_on_interface(c, d, command="del", loss=0.0)
-
-    links = []
-    update_netmap(netmap, scenario_name, links)
+    player.teardown()
 
 
 if __name__ == "__main__":

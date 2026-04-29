@@ -9,9 +9,15 @@ import time
 from itertools import combinations
 from typing import cast
 
-from tools.contact_player.ccp import ContactState, CoreContact, CoreContactPlan
+from tools.contact_player.ccp import (
+    Contact,
+    ContactPlan,
+    ContactState,
+    CoreContact,
+    CoreContactPlan,
+)
 from tools.contact_player.tc_netem import run_in_container, set_on_interface
-from tools.lib.scenario import NetworkInterface, Node, nodes_from_compose
+from tools.lib.scenario import NetworkInterface, Node, NodeMap, nodes_from_compose
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +56,18 @@ def parse_args() -> argparse.Namespace:
         "contact_plan", help="Path to the core contact plan file (.ccp)"
     )
     return parser.parse_args()
+
+
+class ContactPlayer:
+    def __init__(self, scenario_name: str, plan: ContactPlan, nodes: NodeMap) -> None:
+        self.scenario_name: str = scenario_name
+        self.plan: ContactPlan = plan
+        self.nodes: NodeMap = nodes
+
+        # scheduled contacts and their current activation state
+        self.contact_states: dict[Contact, ContactState] = {
+            c: ContactState.PRE for c in plan.contacts
+        }
 
 
 def populate_node_interfaces(nodes: dict[str, Node]) -> None:
@@ -203,6 +221,7 @@ def update_netmap(
             for l in pure_node_links:
                 f.write(f"{l[0]} {l[2]} {l[1]}\n")
 
+
 def main() -> None:
     args = parse_args()
 
@@ -225,7 +244,6 @@ def main() -> None:
 
     scenario_name = os.path.basename(args.scenario)
     scenario_name = os.path.splitext(scenario_name)[0]
-
 
     print(links)
 
@@ -293,7 +311,6 @@ def main() -> None:
 
     update_netmap(netmap, scenario_name, links)
 
-
     # setup handler to intercept ctrl c
     def signal_handler(sig, frame):
         global args
@@ -307,7 +324,6 @@ def main() -> None:
             set_on_interface(c, d, command="del", loss=0.0)
 
         sys.exit(0)
-
 
     # setting packet loss to 100% for all dynamic contacts
     for c, d in container_devs:
@@ -344,7 +360,10 @@ def main() -> None:
         next_event = min(
             [
                 t
-                for t in [plan.next_activation(cur_time), plan.next_deactivation(cur_time)]
+                for t in [
+                    plan.next_activation(cur_time),
+                    plan.next_deactivation(cur_time),
+                ]
                 if t is not None
             ]
         )
@@ -383,7 +402,9 @@ def main() -> None:
                 if data == b"links":
                     pure_node_links = get_pure_node_links(links)
                     print(f"cmd: Current links are {pure_node_links}")
-                    response = "\n".join([f"{l[0]} {l[2]} {l[1]}" for l in pure_node_links])
+                    response = "\n".join(
+                        [f"{l[0]} {l[2]} {l[1]}" for l in pure_node_links]
+                    )
                     control_socket.sendto(response.encode(), addr)
 
             except socket.error:
@@ -423,7 +444,6 @@ def main() -> None:
         links = list(set([tuple(l) for l in links]))
         update_netmap(netmap, scenario_name, links)
 
-
     # setting packet loss to 0% for all dynamic contacts, remove netem
     for c, d in container_devs:
         print(f"Removing tc netem for {c} on device {d}")
@@ -431,6 +451,7 @@ def main() -> None:
 
     links = []
     update_netmap(netmap, scenario_name, links)
+
 
 if __name__ == "__main__":
     main()

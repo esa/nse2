@@ -6,6 +6,8 @@ from pydantic import BaseModel
 
 NetworkName = str
 IPAddress = str
+
+
 class _NodeNetworkConfig(BaseModel):
     ipv4_address: IPAddress
 
@@ -84,6 +86,10 @@ class Node(BaseModel, frozen=True):
     @override
     def __hash__(self) -> int:
         return hash(id)
+
+
+NodeMap = dict[str, Node]
+
 
 def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
     """Returns dictionary with the nodes specified in a Docker compose file.

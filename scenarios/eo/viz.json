@@ -1,0 +1,43 @@
+{
+  "title": "Earth Observation",
+  "description": "A minimal earth observation scenario.",
+  "background": "extras/background.jpg",
+  "links": "tmp/eo.compose.netmap",
+  "nodes": [
+    {
+      "name": "pcc",
+      "type": "computer",
+      "x": 657,
+      "y": 634,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "mcc",
+      "type": "computer",
+      "x": 693,
+      "y": 384,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "gs1",
+      "type": "settings_input_antenna",
+      "x": 570,
+      "y": 292,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "gs2",
+      "type": "settings_input_antenna",
+      "x": 410,
+      "y": 544,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "eosat",
+      "type": "satellite_alt",
+      "x": 200,
+      "y": 400,
+      "color": "SkyBlue"
+    }
+  ]
+}

@@ -245,13 +245,14 @@ def main() -> None:
     control_socket.bind(("localhost", 9966))
     control_socket.setblocking(False)
 
+    should_loop = args.loop if args.loop is not None else plan.loop
     cur_time = 0
     while True:
         if update_netmap_file:
             player.update_netmap()
         next_t = player.next_event_time(after=cur_time)
         if next_t is None:
-            if plan.loop or args.loop:
+            if should_loop:
                 print("Looping")
                 cur_time = 0
                 player.reset()

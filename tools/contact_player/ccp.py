@@ -46,12 +46,14 @@ class FixedLink(BaseModel, frozen=True):
     Attributes:
         src: The source node of the link.
         iface: The interface on the source node.
+        network: The name of the network this link belongs to.
         dst: The destination node of the link.
         props: Network properties of the link.
     """
 
     src: Node
     iface: NetworkInterface
+    network: NetworkName
     dst: Node
     props: LinkProperties
 
@@ -90,8 +92,8 @@ def _resolve_iface(
     """Resolve a raw dst token to a (dst: Node, src_network: NetworkConfig) pair.
 
     Either:
-    - dst_raw is "dev:eosat_gs1_lo" → iface is a direct key into src.networks
-    - dst_raw is a node name/id     → find shared interface via set intersection
+    - dst_raw is "dev:eosat_gs1_lo" → network is a direct key into src.networks
+    - dst_raw is a node name/id     → find shared network via set intersection
     """
     if dst_raw.startswith("dev:"):
         shared_network: NetworkName = dst_raw[4:]
@@ -194,7 +196,13 @@ class ContactPlan(BaseModel):
         for raw in raw_fixed:
             src, dst, src_net_conf = _resolve_link(raw, nodes)
             fixed_links.append(
-                FixedLink(src=src, dst=dst, iface=src_net_conf.iface, props=raw.props)
+                FixedLink(
+                    src=src,
+                    dst=dst,
+                    iface=src_net_conf.iface,
+                    network=src_net_conf.network,
+                    props=raw.props,
+                )
             )
 
         contacts: list[Contact] = []
@@ -207,6 +215,7 @@ class ContactPlan(BaseModel):
                     src=src,
                     dst=dst,
                     iface=src_net_conf.iface,
+                    network=src_net_conf.network,
                     props=raw.props,
                 )
             )

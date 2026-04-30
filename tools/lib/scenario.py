@@ -13,6 +13,9 @@ IPAddress = str
 
 
 class NetworkConfig(BaseModel):
+    """Network interface configuration for a specific network."""
+
+    network: NetworkName
     iface: NetworkInterface
     ipv4: IPAddress
 
@@ -67,12 +70,7 @@ class Node(BaseModel, frozen=True):
 
     @override
     def __hash__(self) -> int:
-        return hash(id)
-
-    def interfaces_toward(self, neighbor: "Node") -> list[NetworkInterface] | None:
-        """Return list of interfaces towards `neighbor`."""
-        shared = self.networks.keys() & neighbor.networks.keys()
-        return [self.networks[net].iface for net in shared] if shared else None
+        return hash(self.id)
 
 
 NodeMap = dict[str, Node]
@@ -95,10 +93,13 @@ def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
         for network, conf in service.networks.items():
             res = run_in_container(name, f"ip a | grep {conf.ipv4_address}")
             if len(res) == 0:
-                print("Error: IP not found")
-                continue
+                raise ValueError(
+                    f"Failed to resolve interface for node '{name}' on network '{network}' with IP '{conf.ipv4_address}'"
+                )
             iface = res.rsplit(" ", maxsplit=1)[1].strip()
-            networks[network] = NetworkConfig(iface=iface, ipv4=conf.ipv4_address)
+            networks[network] = NetworkConfig(
+                network=network, iface=iface, ipv4=conf.ipv4_address
+            )
 
         # new method for getting interface names
         # networks = {

@@ -21,8 +21,7 @@ def parse_args() -> argparse.Namespace:
     """Parses command-line arguments.
 
     Returns:
-        Namespace with attributes: ``scenario`` (str), ``contact_plan`` (str),
-        ``loop`` (bool | None), ``symmetric`` (bool), ``map_network`` (bool).
+        Namespace containing parsed arguments.
     """
     parser = argparse.ArgumentParser(
         description="Read out the network connections for the DTN simulation scenario from a Docker Compose file and contact plan.",
@@ -168,6 +167,14 @@ class ContactPlayer:
         deactivate: bool = False,
         command: str = "change",
     ) -> None:
+        """Applies netem link properties to the given contact or fixed link.
+
+        Args:
+            contact: The Contact or FixedLink to modify.
+            deactivate: If True, fully degrades the link (100% loss) instead of
+                applying the contact's actual properties.
+            command: The tc qdisc command ('add', 'change', 'del').
+        """
         loss = contact.props.loss
         if deactivate:
             loss = 100.0
@@ -182,21 +189,19 @@ class ContactPlayer:
             bandwidth=contact.props.bandwidth,
         )
         if self.symmetric:
-            iface = contact.dst.interfaces_toward(contact.src)
-            if not iface:
-                print(
-                    f"Error: did not find interface from node {contact.dst} to {contact.src}"
+            if contact.network not in contact.dst.networks:
+                raise ReferenceError(
+                    f"Error: node {contact.dst.name} is not connected to network {contact.network}"
                 )
-            else:
-                set_on_interface(
-                    contact.dst.name,
-                    iface[0],
-                    command=command,
-                    loss=loss,
-                    delay=contact.props.delay,
-                    jitter=contact.props.jitter,
-                    bandwidth=contact.props.bandwidth,
-                )
+            set_on_interface(
+                contact.dst.name,
+                contact.dst.networks[contact.network].iface,
+                command=command,
+                loss=loss,
+                delay=contact.props.delay,
+                jitter=contact.props.jitter,
+                bandwidth=contact.props.bandwidth,
+            )
 
     def teardown(self) -> None:
         """Remove all tc netem rules set by this player and delete the generated netmap file."""

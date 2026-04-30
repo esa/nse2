@@ -82,6 +82,7 @@ flowchart LR
 
 1. start the docker containers and setup the network: `./start_topo.sh`
 2. if you want fluctuating connectivity and bandwidth limitations: `./start_net.sh`
-3. start the automatic actions on the nodes: `./start_actions.sh`
-4. *OPTIONALLY: start the network visualization: `./start_viz.sh`*
-5. *OPTIONALLY: start the docker test bed manager: `dtbm mc.compose.yml mc.contacts.ccp`*
+3. *OPTIONALLY: start the network visualization: `./start_viz.sh`*
+4. *OPTIONALLY: start the docker test bed manager: `nse2_mgr mc.compose.yml mc.contacts.ccp`*
+
+You can get an interactive shell on any of the nodes through docker: `docker exec -it <node> bash` or `nse2_sh <node>`

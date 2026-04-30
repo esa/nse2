@@ -22,27 +22,7 @@ class _NodeNetworkConfig(BaseModel):
 
 
 class _ScenarioService(BaseModel):
-    """Represents a single service definition from a Docker Compose file.
-
-    Maps directly to a service entry under the ``services`` key in a
-    ``docker-compose.yml`` file. Each service corresponds to a network node
-    in the simulation scenario.
-
-    Attributes:
-        hostname: Hostname assigned to the container.
-        container_name: Explicit container name used by Docker.
-        image: Docker image to use for this service.
-        cap_add: List of Linux capabilities added to the container,
-            e.g. ``["NET_ADMIN"]``.
-        networks: Mapping of network name to network configuration,
-            defining which subnets this service is connected to and
-            its static IP address on each.
-        environment: Environment variables for the container, either as
-            a list of ``"KEY=VALUE"`` strings or as a plain dictionary.
-        privileged: Whether the container runs in privileged mode.
-            Defaults to ``False``.
-        entrypoint: Entrypoint command override for the container.
-    """
+    """Represents a single service definition from a Docker Compose file."""
 
     hostname: str
     container_name: str
@@ -99,14 +79,7 @@ NodeMap = dict[str, Node]
 
 
 def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
-    """Returns dictionary with the nodes specified in a Docker compose file.
-
-    Args:
-        - path: path of the compose file.
-
-    Returns:
-        - dict[str, Node]
-    """
+    """Returns a dictionary mapping node names to Node objects based on a Docker Compose file."""
     print(f"Loading scenario from {path}.")
     compose = _ScenarioFile.from_yaml(path)
     nodes: dict[str, Node] = {}
@@ -140,14 +113,12 @@ def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
 
 
 def find_link_pairs(nodes: NodeMap) -> set[frozenset[str]]:
-    """Return the set of all undirected node pairs that share at least one common network.
-
-    Args:
-        nodes: Mapping from node names to Node objects.
+    """Returns all undirected node pairs that share at least one common network.
 
     Returns:
-        Set of frozensets, each containing two node names that are connected
-        via a shared network."""
+        A set of frozensets, where each frozenset contains the names of two
+        connected nodes.
+    """
     return {
         frozenset([a.name, b.name])
         for a, b in combinations(nodes.values(), 2)

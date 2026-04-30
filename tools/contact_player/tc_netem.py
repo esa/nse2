@@ -2,8 +2,18 @@ import subprocess
 
 
 def run_in_container(container_name: str, command: str, debug_print: bool = False):
-    """
-    Sets the command on all interfaces of the container.
+    """Executes a command inside a Docker container.
+
+    Args:
+        container_name: The name of the Docker container.
+        command: The shell command to execute.
+        debug_print: Whether to print the command before execution (default: False).
+
+    Returns:
+        The standard output from the executed command.
+
+    Raises:
+        SystemExit: If the command returns a non-zero exit code.
     """
     if debug_print:
         print(f"Running command in container {container_name}: {command}")
@@ -24,8 +34,15 @@ def run_in_container(container_name: str, command: str, debug_print: bool = Fals
 
 
 def set_on_all_interfaces(container_name: str, command: str, loss: float = 0.0):
-    """
-    Sets the command on all interfaces of the container.
+    """Applies a tc netem rule to all ethernet interfaces in a container.
+
+    Args:
+        container_name: The name of the Docker container.
+        command: The tc qdisc command operation (e.g., 'add', 'change', 'del').
+        loss: Packet loss percentage to apply (default: 0.0).
+
+    Returns:
+        Standard output from the executed command.
     """
     res = run_in_container(
         container_name,
@@ -47,8 +64,19 @@ def set_on_interface(
     jitter: float = 0,
     bandwidth: str = "",
 ):
-    """
-    Sets the command on the specified interface of the container.
+    """Applies network emulation (netem) rules to a specific container interface.
+
+    Args:
+        container_name: The name of the Docker container.
+        interface: The network interface to modify (e.g., 'eth0').
+        command: The tc qdisc command operation (e.g., 'add', 'change', 'del').
+        loss: Packet loss percentage (default: 0.0).
+        delay: Link delay in milliseconds (default: 0).
+        jitter: Link delay jitter in milliseconds (default: 0).
+        bandwidth: Bandwidth limit string, e.g., '100mbit' (default: "").
+
+    Returns:
+        Standard output from the executed command.
     """
     if delay > 1000:
         delay_str = f"{delay//1000}s"

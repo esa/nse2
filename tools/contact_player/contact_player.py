@@ -62,6 +62,19 @@ class ContactState(Enum):
 
 
 class ContactPlayer:
+    """Plays out a contact plan over a network simulation scenario.
+
+    Manages the state of scheduled contacts and applies network emulation (netem)
+    rules to the corresponding interfaces as the simulation time advances.
+
+    Attributes:
+        scenario_name: The name of the scenario.
+        plan: The contact plan containing the scheduled contacts.
+        nodes: A mapping of node names to Node objects in the scenario.
+        contact_states: A dictionary tracking the current activation state of each scheduled contact.
+        permanent_links: A set of node pairs representing links in the topology that are not managed dynamically by the contact plan.
+    """
+
     def __init__(self, scenario_name: str, plan: ContactPlan, nodes: NodeMap) -> None:
         self.scenario_name: str = scenario_name
         self.plan: ContactPlan = plan

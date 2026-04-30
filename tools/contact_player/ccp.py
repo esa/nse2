@@ -10,6 +10,15 @@ from tools.lib.scenario import (
 
 
 class LinkProperties(BaseModel, frozen=True):
+    """Network properties associated with a link.
+
+    Attributes:
+        bandwidth: The bandwidth of the link (e.g., '100mbit').
+        loss: Packet loss percentage (default: 0.0).
+        delay: Link delay in milliseconds (default: 0.0).
+        jitter: Link delay jitter in milliseconds (default: 0.0).
+    """
+
     bandwidth: str
     loss: float = 0.0
     delay: float = 0.0
@@ -17,17 +26,30 @@ class LinkProperties(BaseModel, frozen=True):
 
 
 class _RawLink(BaseModel):
+    """Raw link data as read from a contact plan file."""
+
     src: str
     dst: str
     props: LinkProperties
 
 
 class _RawContact(_RawLink):
+    """Raw contact data as read from a contact plan file."""
+
     begin: int
     end: int
 
 
 class FixedLink(BaseModel, frozen=True):
+    """A persistent network link between two nodes.
+
+    Attributes:
+        src: The source node of the link.
+        iface: The interface on the source node.
+        dst: The destination node of the link.
+        props: Network properties of the link.
+    """
+
     src: Node
     iface: NetworkInterface
     dst: Node
@@ -35,6 +57,13 @@ class FixedLink(BaseModel, frozen=True):
 
 
 class Contact(FixedLink, frozen=True):
+    """A scheduled network contact between two nodes.
+
+    Attributes:
+        begin: Simulation time when the contact begins.
+        end: Simulation time when the contact ends.
+    """
+
     begin: int
     end: int
 
@@ -103,6 +132,14 @@ def _resolve_link(raw: _RawLink, nodes: NodeMap) -> tuple[Node, Node, NetworkCon
 
 
 class ContactPlan(BaseModel):
+    """A collection of fixed links and scheduled contacts.
+
+    Attributes:
+        loop: Whether the plan should loop when it reaches the end.
+        fixed_links: The permanent links in the network.
+        contacts: The scheduled contacts that activate and deactivate.
+    """
+
     loop: bool
     fixed_links: list[FixedLink]
     contacts: list[Contact]

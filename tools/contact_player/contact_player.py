@@ -73,12 +73,20 @@ class ContactPlayer:
         nodes: A mapping of node names to Node objects in the scenario.
         contact_states: A dictionary tracking the current activation state of each scheduled contact.
         permanent_links: A set of node pairs representing links in the topology that are not managed dynamically by the contact plan.
+        symmetric: Treat all contacts as symmetric (bidirectional).
     """
 
-    def __init__(self, scenario_name: str, plan: ContactPlan, nodes: NodeMap) -> None:
+    def __init__(
+        self,
+        scenario_name: str,
+        plan: ContactPlan,
+        nodes: NodeMap,
+        symmetric: bool = False,
+    ) -> None:
         self.scenario_name: str = scenario_name
         self.plan: ContactPlan = plan
         self.nodes: NodeMap = nodes
+        self.symmetric: bool = symmetric
 
         # scheduled contacts and their current activation state
         self.contact_states: dict[Contact, ContactState] = {
@@ -164,7 +172,6 @@ class ContactPlayer:
         contact: Contact | FixedLink,
         deactivate: bool = False,
         command: str = "change",
-        symmetric: bool = False,
     ) -> None:
         loss = contact.props.loss
         if deactivate:
@@ -179,7 +186,7 @@ class ContactPlayer:
             jitter=contact.props.jitter,
             bandwidth=contact.props.bandwidth,
         )
-        if symmetric:
+        if self.symmetric:
             iface = contact.dst.interfaces_toward(contact.src)
             if not iface:
                 print(
@@ -201,8 +208,7 @@ class ContactPlayer:
         for link in self.plan.fixed_links:
             self.apply(link, command="del")
         for contact in self.contact_states:
-            # TODO: I think this can also be `self.apply`, check that!
-            set_on_interface(contact.src.name, contact.iface, command="del", loss=0.0)
+            self.apply(contact, command="del")
         # delete the netmap file
         netmap_file = Path("tmp") / f"{self.scenario_name}.netmap"
         netmap_file.unlink(missing_ok=True)
@@ -214,7 +220,7 @@ def main() -> None:
     scenario_path = Path(args.scenario)
     nodes = nodes_from_compose(scenario_path)
     plan = ContactPlan.from_file(args.contact_plan, nodes)
-    player = ContactPlayer(scenario_path.stem, plan, nodes)
+    player = ContactPlayer(scenario_path.stem, plan, nodes, symmetric=args.symmetric)
 
     print("Permanent links: ", player.permanent_links)
     print("Fluctuating Contacts: ", player.contact_states.keys())

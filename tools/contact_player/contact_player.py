@@ -297,12 +297,11 @@ def main() -> None:
                     print(
                         f"cmd: Current active links are {player.active_contact_links()}"
                     )
-                    response = "\n".join(
-                        [f"{a} - {b}" for a, b in player.permanent_links]
-                    )
-                    response += "\n".join(
+                    lines = [f"{a} - {b}" for a, b in player.permanent_links]
+                    lines.extend(
                         [f"{a} . {b}" for a, b in player.active_contact_links()]
                     )
+                    response = "\n".join(lines)
                     control_socket.sendto(response.encode(), addr)
 
             except socket.error:

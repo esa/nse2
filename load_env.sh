@@ -10,3 +10,4 @@ fi
 
 echo "Adding tools/bin and tools/helpers to PATH"
 export PATH=$PATH:$(pwd)/tools/bin:$(pwd)/tools/helpers
+export PYTHONPATH=$PYTHONPATH:$(pwd)

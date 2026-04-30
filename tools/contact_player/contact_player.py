@@ -133,17 +133,15 @@ class ContactPlayer:
         Args:
             time: The current simulation time.
         """
-        time_effective = (time % self.plan.get_max_time()) if self.plan.loop else time
-
         for contact, state in self.contact_states.items():
-            if contact.is_active(time_effective):
+            if contact.is_active(time):
                 if state == ContactState.PRE:
-                    print("[ %d ] Activating %s" % (time, contact))
+                    print(f"[ {time} ] Activating {contact}")
                     self.apply(contact)
                     self.contact_states[contact] = ContactState.LIVE
             else:
                 if state == ContactState.LIVE:
-                    print("[ %d ] Deactivating %s" % (time, contact))
+                    print(f"[ {time} ] Deactivating {contact}")
                     self.apply(contact, deactivate=True)
                     self.contact_states[contact] = ContactState.POST
 
@@ -156,14 +154,11 @@ class ContactPlayer:
         Returns:
             The next event time, or None if there are no upcoming events.
         """
-        # TODO: is "effective" here neccesary?
-        effective = (after % self.plan.get_max_time()) if self.plan.loop else after
-
         candidates: list[int] = []
         for contact, state in self.contact_states.items():
-            if state == ContactState.PRE and contact.begin >= effective:
+            if state == ContactState.PRE and contact.begin >= after:
                 candidates.append(contact.begin)
-            if state == ContactState.LIVE and contact.end >= effective:
+            if state == ContactState.LIVE and contact.end >= after:
                 candidates.append(contact.end)
         return min(candidates) if candidates else None
 
@@ -260,7 +255,7 @@ def main() -> None:
                 print("No more events")
                 break
 
-        print("[ %d ] Next event(s) at %d" % (cur_time, next_t))
+        print(f"[ {cur_time} ] Next event(s) at {next_t}")
 
         sleep_time = next_t - cur_time
         time_slept = 0

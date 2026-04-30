@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
-from pathlib import Path
 import signal
 import socket
 import sys
 import time
-from itertools import combinations
-from typing import cast
+from enum import Enum, auto
+from pathlib import Path
 
 from tools.contact_player.ccp import (
     Contact,
     ContactPlan,
-    ContactState,
-    CoreContact,
-    CoreContactPlan,
     FixedLink,
 )
 from tools.contact_player.tc_netem import set_on_interface
-from tools.lib.scenario import (
-    Node,
-    NodeMap,
-    nodes_from_compose,
-)
+from tools.lib.scenario import NodeMap, find_link_pairs, nodes_from_compose
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +55,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class ContactState(Enum):
+    PRE = auto()
+    LIVE = auto()
+    POST = auto()
+
+
 class ContactPlayer:
     def __init__(self, scenario_name: str, plan: ContactPlan, nodes: NodeMap) -> None:
         self.scenario_name: str = scenario_name
@@ -75,8 +72,46 @@ class ContactPlayer:
             c: ContactState.PRE for c in plan.contacts
         }
 
+        # links from the compose topology that are not managed contacts (that have changing properties)
+        managed = {frozenset([link.src.name, link.dst.name]) for link in plan.contacts}
+        self.permanent_links: set[frozenset[str]] = find_link_pairs(nodes) - managed
+
+    def reset(self) -> None:
+        """Reset all contacts to the PRE state, so that the simulation can start over."""
+        for c in self.contact_states:
+            self.contact_states[c] = ContactState.PRE
+
+    def active_contact_links(self) -> set[frozenset[str]]:
+        """Return the set of active contact links as undirected node pairs without duplicates."""
+        return {
+            frozenset([c.src.name, c.dst.name])
+            for c, s in self.contact_states.items()
+            if s == ContactState.LIVE
+        }
+
+    def update_netmap(self) -> None:
+        """Write the permanent and current active contact links to ./tmp/{scenario_name}.netmap."""
+        out_dir = Path("tmp")
+        out_dir.mkdir(exist_ok=True)
+
+        netmap_file = out_dir / f"{self.scenario_name}.netmap"
+        print(f"Updating network map {netmap_file}")
+
+        with netmap_file.open("w") as f:
+            for a, b in self.permanent_links:
+                f.write(f"{a} - {b}\n")
+            for a, b in self.active_contact_links():
+                f.write(f"{a} . {b}\n")
+
     def tick(self, time: int) -> None:
-        """Advance simulation to time t, activating and deactivating contacts"""
+        """Advance the simulation to the given time and update contact states.
+
+        Changes contacts from PRE to LIVE when they become active and from LIVE
+        to POST when they are no longer active.
+
+        Args:
+            time: The current simulation time.
+        """
         time_effective = (time % self.plan.get_max_time()) if self.plan.loop else time
 
         for contact, state in self.contact_states.items():
@@ -90,6 +125,26 @@ class ContactPlayer:
                     print("[ %d ] Deactivating %s" % (time, contact))
                     self.apply(contact, deactivate=True)
                     self.contact_states[contact] = ContactState.POST
+
+    def next_event_time(self, after: int) -> int | None:
+        """Return the next simulation time at which a contact changes state.
+
+        Args:
+            after: The simulation time after which to find the next event.
+
+        Returns:
+            The next event time, or None if there are no upcoming events.
+        """
+        # TODO: is "effective" here neccesary?
+        effective = (after % self.plan.get_max_time()) if self.plan.loop else after
+
+        candidates: list[int] = []
+        for contact, state in self.contact_states.items():
+            if state == ContactState.PRE and contact.begin >= effective:
+                candidates.append(contact.begin)
+            if state == ContactState.LIVE and contact.end >= effective:
+                candidates.append(contact.end)
+        return min(candidates) if candidates else None
 
     def apply(
         self,
@@ -140,95 +195,6 @@ class ContactPlayer:
         netmap_file.unlink(missing_ok=True)
 
 
-def find_common_subnet_between_nodes(
-    node1: str, node2: str, nodes: dict[str, Node]
-) -> str | None:
-    for k in nodes[node1].interfaces.keys():
-        if k in nodes[node2].interfaces:
-            return k
-    return None
-
-
-def get_dev_for_subnet(node: str, subnet: str, nodes: dict[str, Node]) -> str:
-    return nodes[node].interfaces[subnet].dev
-
-
-# TODO: maybe completely useless, since `links` should never be that, I think
-# but not sure. Therefor check if needed, maybe remove this function if not
-def get_pure_node_links(links: list[tuple[str, str, str]]) -> set[tuple[str, str, str]]:
-    """Resolves interface identifiers to node names and deduplicates links.
-
-    Converts links that reference specific network interfaces (e.g. ``dev:pcc_gs1``)
-    into plain node-to-node links, then deduplicates by sorting each pair
-    so that ``(pcc, gs1)`` and ``(gs1, pcc)`` are treated as the same link.
-
-    Args:
-        links: Raw link tuples of the form ``(endpoint_a, endpoint_b, link_type)``,
-            where either endpoint may be a ``dev:<node>_<node>`` interface reference.
-
-    Returns:
-        A set of deduplicated 3-tuples ``(node_a, node_b, link_type)`` with
-        node names sorted alphabetically and all interface references resolved.
-    """
-    pure_node_links: set[tuple[str, str, str]] = set()
-    for l in links:
-        # print("Link: ", l)
-        nodes = [l[0], l[1]]
-        link_type = l[2]
-
-        if l[0].startswith("dev:"):
-            dev_str = l[0].split(":")[1]
-            components = dev_str.split("_")
-            if len(components) >= 2:
-                if components[0] == l[1]:
-                    nodes = [components[1], l[1]]
-                if components[1] == l[1]:
-                    nodes = [components[0], l[1]]
-            else:
-                print(
-                    f"Warning: Dev string {dev_str} not mappable to nodes, skipping link."
-                )
-        if l[1].startswith("dev:"):
-            dev_str = l[1].split(":")[1]
-            components = dev_str.split("_")
-            if len(components) >= 2:
-                if components[0] == l[0]:
-                    nodes = [l[0], components[1]]
-                if components[1] == l[0]:
-                    nodes = [l[0], components[0]]
-            else:
-                print(
-                    f"Warning: Dev string {dev_str} not mappable to nodes, skipping link."
-                )
-        nodes = sorted(nodes)
-        # print("new link: ", (nodes[0], nodes[1], link_type))
-        pure_node_links.add((nodes[0], nodes[1], link_type))
-    return pure_node_links
-
-
-def update_netmap(
-    netmap: bool, scenario_name: str, links: list[tuple[str, str, str]]
-) -> None:
-    """Writes or updates resolved node links to a .netmap file in the tmp/ directory.
-
-    Args:
-        netmap: When False, this function does nothing.
-        scenario_name: Used as the output filename (tmp/<scenario_name>.netmap).
-        links: Raw link tuples to resolve and write.
-    """
-    if netmap:
-        # check if tmp directory exists
-        if not os.path.exists("tmp"):
-            os.makedirs("tmp")
-
-        pure_node_links = get_pure_node_links(links)
-
-        print(f"Updating network map tmp/{scenario_name}.netmap")
-        with open(f"tmp/{scenario_name}.netmap", "w") as f:
-            for l in pure_node_links:
-                f.write(f"{l[0]} {l[2]} {l[1]}\n")
-
-
 def main() -> None:
     args = parse_args()
     update_netmap_file: bool = args.map_network
@@ -237,91 +203,8 @@ def main() -> None:
     plan = ContactPlan.from_file(args.contact_plan, nodes)
     player = ContactPlayer(scenario_path.stem, plan, nodes)
 
-    args = parse_args()
-
-    nodes = nodes_from_compose(args.scenario)
-
-    netmap = cast(bool, args.map_network)
-
-    # check all node combinations for common subnets/links
-    links: list[tuple[str, str, str]] = [
-        (a, b, "-")
-        for a, b in combinations(nodes, 2)
-        if find_common_subnet_between_nodes(a, b, nodes) is not None
-    ]
-
-    # print(mapping)
-    # print(nodes)
-    # print(links)
-
-    scenario_name = os.path.basename(args.scenario)
-    scenario_name = os.path.splitext(scenario_name)[0]
-
-    print(links)
-
-    mapping = {node.id: node.name for node in nodes.values()}
-    plan = CoreContactPlan.from_file(args.contact_plan, mapping=mapping)
-
-    # get list of unique nodes from all contacts in plan
-    container_devs = []
-
-    for contact in plan.all_contacts():
-        if contact[1].startswith("dev:"):
-            container_devs.append((contact[0], contact[1].split(":")[1] + "_0"))
-            continue
-
-        subnet = find_common_subnet_between_nodes(contact[0], contact[1], nodes)
-        if subnet is None:
-            print("Error: No common subnet found")
-            continue
-        for node in contact:
-            node_dev = get_dev_for_subnet(node, subnet, nodes)
-            container_devs.append((node, node_dev))
-
-    # remove duplicates in container_devs
-    container_devs = list(set(container_devs))
-
-    all_contacts = plan.all_contacts()
-    all_contacts_sorted_pairs = [tuple(sorted(c)) for c in all_contacts]
-    # add "." to sorted pairs to match format in links
-    all_contacts_sorted_pairs = [
-        tuple([c[0], c[1], "-"]) for c in all_contacts_sorted_pairs
-    ]
-    all_contacts_sorted_pairs2 = []
-    for c in all_contacts_sorted_pairs:
-        c = list(c)
-        if c[0].startswith("dev:"):
-            dev_str = c[0].split(":")[1]
-            components = dev_str.split("_")
-            if len(components) >= 2:
-                if components[0] == c[1]:
-                    c[0] = components[1]
-                if components[1] == c[1]:
-                    c[0] = components[0]
-            else:
-                print(
-                    f"Warning: Dev string {dev_str} not mappable to nodes, skipping link."
-                )
-        if c[1].startswith("dev:"):
-            dev_str = c[1].split(":")[1]
-            components = dev_str.split("_")
-            if len(components) >= 2:
-                if components[0] == c[0]:
-                    c[1] = components[1]
-                if components[1] == c[0]:
-                    c[1] = components[0]
-            else:
-                print(
-                    f"Warning: Dev string {dev_str} not mappable to nodes, skipping link."
-                )
-        all_contacts_sorted_pairs2.append(tuple(c))
-    print("all contacts sorted pairs: ", all_contacts_sorted_pairs2)
-
-    # remove sorted contact pairs from list of links
-    links = [l for l in links if tuple(l) not in all_contacts_sorted_pairs2]
-    print("links: ", links)
-
-    update_netmap(netmap, scenario_name, links)
+    print("Permanent links: ", player.permanent_links)
+    print("Fluctuating Contacts: ", player.contact_states.keys())
 
     # apply initial network configuration to fluctuating contacts and fixed links
     for contact in player.contact_states:
@@ -338,38 +221,29 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, handle_sigint)
 
-    cur_time = 0
-
     # Open a UDP socket for reading control messages on localhost
     control_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     control_socket.bind(("localhost", 9966))
     control_socket.setblocking(False)
 
+    cur_time = 0
     while True:
-        if (
-            plan.next_activation(cur_time) == None
-            and plan.next_deactivation(cur_time) == None
-        ):
+        if update_netmap_file:
+            player.update_netmap()
+        next_t = player.next_event_time(after=cur_time)
+        if next_t is None:
             if plan.loop or args.loop:
                 print("Looping")
                 cur_time = 0
-                plan.reset()
+                player.reset()
                 continue
             else:
                 print("No more events")
                 break
-        next_event = min(
-            [
-                t
-                for t in [
-                    plan.next_activation(cur_time),
-                    plan.next_deactivation(cur_time),
-                ]
-                if t is not None
-            ]
-        )
-        print("[ %d ] Next event(s) at %d" % (cur_time, next_event))
-        sleep_time = next_event - cur_time
+
+        print("[ %d ] Next event(s) at %d" % (cur_time, next_t))
+
+        sleep_time = next_t - cur_time
         time_slept = 0
         SLEEP_DELAY = 0.1
         paused = False
@@ -391,7 +265,7 @@ def main() -> None:
                 if data == b"time":
                     print(f"cmd: Current time is {cur_time + time_slept}")
                     control_socket.sendto(
-                        f"{cur_time + int(time_slept)} {next_event}".encode(), addr
+                        f"{cur_time + int(time_slept)} {next_t}".encode(), addr
                     )
                 if data == b"scenario":
                     print(
@@ -399,12 +273,16 @@ def main() -> None:
                     )
                     response = f"{args.scenario} {args.contact_plan}"
                     control_socket.sendto(response.encode(), addr)
-
                 if data == b"links":
-                    pure_node_links = get_pure_node_links(links)
-                    print(f"cmd: Current links are {pure_node_links}")
+                    print(f"cmd: Permanent links are {player.permanent_links}")
+                    print(
+                        f"cmd: Current active links are {player.active_contact_links()}"
+                    )
                     response = "\n".join(
-                        [f"{l[0]} {l[2]} {l[1]}" for l in pure_node_links]
+                        [f"{a} - {b}" for a, b in player.permanent_links]
+                    )
+                    response += "\n".join(
+                        [f"{a} . {b}" for a, b in player.active_contact_links()]
                     )
                     control_socket.sendto(response.encode(), addr)
 
@@ -418,10 +296,8 @@ def main() -> None:
                 time.sleep(SLEEP_DELAY)
                 if not paused:
                     time_slept += SLEEP_DELAY
-        cur_time = next_event
+        cur_time = next_t
         player.tick(cur_time)
-
-        update_netmap(netmap, scenario_name, links)
 
     player.teardown()
 

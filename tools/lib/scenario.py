@@ -1,3 +1,4 @@
+from itertools import combinations
 from os import PathLike
 from typing import override
 
@@ -136,3 +137,19 @@ def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
 
     print(f"Created {len(nodes)} nodes.")
     return nodes
+
+
+def find_link_pairs(nodes: NodeMap) -> set[frozenset[str]]:
+    """Return the set of all undirected node pairs that share at least one common network.
+
+    Args:
+        nodes: Mapping from node names to Node objects.
+
+    Returns:
+        Set of frozensets, each containing two node names that are connected
+        via a shared network."""
+    return {
+        frozenset([a.name, b.name])
+        for a, b in combinations(nodes.values(), 2)
+        if a.networks.keys() & b.networks.keys()
+    }

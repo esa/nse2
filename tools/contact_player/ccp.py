@@ -153,7 +153,7 @@ class ContactPlan(BaseModel):
         loop = False
 
         with open(path) as f:
-            for line in f:
+            for line_num, line in enumerate(f, start=1):
                 line = line.strip()
 
                 if not line or line.startswith("#"):
@@ -161,37 +161,45 @@ class ContactPlan(BaseModel):
 
                 fields = line.split()
 
-                if len(fields) == 3 and fields[0] == "s" and fields[1] == "loop":
-                    loop = bool(int(fields[2]))
-                elif len(fields) > 4 and fields[0] == "a":
-                    if fields[1] == "fixed":
-                        raw_fixed.append(
-                            _RawLink(
-                                src=fields[2],
-                                dst=fields[3],
-                                props=LinkProperties(
-                                    bandwidth=fields[4],
-                                    loss=float(fields[5]),
-                                    delay=float(fields[6]),
-                                    jitter=float(fields[7]),
-                                ),
+                try:
+                    if fields[0] == "s" and fields[1] == "loop":
+                        loop = bool(int(fields[2]))
+                    elif fields[0] == "a":
+                        if fields[1] == "fixed":
+                            raw_fixed.append(
+                                _RawLink(
+                                    src=fields[2],
+                                    dst=fields[3],
+                                    props=LinkProperties(
+                                        bandwidth=fields[4],
+                                        loss=float(fields[5]),
+                                        delay=float(fields[6]),
+                                        jitter=float(fields[7]),
+                                    ),
+                                )
                             )
-                        )
-                    if fields[1] == "contact":
-                        raw_contacts.append(
-                            _RawContact(
-                                begin=int(fields[2]),
-                                end=int(fields[3]),
-                                src=fields[4],
-                                dst=fields[5],
-                                props=LinkProperties(
-                                    bandwidth=fields[6],
-                                    loss=float(fields[7]),
-                                    delay=float(fields[8]),
-                                    jitter=float(fields[9]),
-                                ),
+                        elif fields[1] == "contact":
+                            raw_contacts.append(
+                                _RawContact(
+                                    begin=int(fields[2]),
+                                    end=int(fields[3]),
+                                    src=fields[4],
+                                    dst=fields[5],
+                                    props=LinkProperties(
+                                        bandwidth=fields[6],
+                                        loss=float(fields[7]),
+                                        delay=float(fields[8]),
+                                        jitter=float(fields[9]),
+                                    ),
+                                )
                             )
-                        )
+                        else:
+                            raise ValueError(f"Unknown record type '{fields[1]}'")
+                except (IndexError, ValueError) as e:
+                    raise ValueError(
+                        f"Failed to parse contact plan at line {line_num} '{line}': {e}"
+                    ) from e
+
         fixed_links: list[FixedLink] = []
         for raw in raw_fixed:
             src, dst, src_net_conf = _resolve_link(raw, nodes)

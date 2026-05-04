@@ -19,7 +19,21 @@ NOTE: In theory, podman can be used instead of Docker, but it is not tested. Als
 
 . Clone the NSE2 repository from GitHub: `git clone https://github.com/esa/nse2.git`
 . Navigate to the NSE2 directory: `cd nse2`
-. Create a virtual environment: `python -m venv .venv`
-. Activate the virtual environment: `source .venv/bin/activate`
-. Install the required Python packages: `pip install -r requirements.txt`
-. Install NSE2: `./install_symlinks.sh`
+. Create a virtual environment: `python3 -m venv .venv`
+. Activate the virtual environment and set up tools in your PATH. We recommend using `load_env.sh` before installing the dependencies:
++
+[source,bash]
+----
+source load_env.sh
+pip install -r requirements.txt
+----
++
+**Alternative approach using symlinks:**
+If you prefer not to source `load_env.sh` in every new shell session, you can manually activate the environment, install the dependencies, and use the `install_symlinks.sh` script to install all tools into your `.venv/bin` directory:
++
+[source,bash]
+----
+source .venv/bin/activate
+pip install -r requirements.txt
+./install_symlinks.sh
+----

@@ -1,3 +1,4 @@
+from typing import override
 from pydantic import BaseModel
 
 from tools.lib.scenario import (
@@ -57,6 +58,14 @@ class FixedLink(BaseModel, frozen=True):
     dst: Node
     props: LinkProperties
 
+    @override
+    def __str__(self) -> str:
+        return f"Fixed Link ({self.src.name} -> {self.dst.name} via {self.iface})"
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 class Contact(FixedLink, frozen=True):
     """A scheduled network contact between two nodes.
@@ -72,6 +81,14 @@ class Contact(FixedLink, frozen=True):
     def is_active(self, time: int) -> bool:
         """Return True when the contact is active at the given time."""
         return self.begin <= time < self.end
+
+    @override
+    def __str__(self) -> str:
+        return f"Contact({self.src.name} -> {self.dst.name} via {self.iface}, t=[{self.begin}, {self.end}])"
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 def _resolve_node(raw: str, nodes: NodeMap) -> Node:

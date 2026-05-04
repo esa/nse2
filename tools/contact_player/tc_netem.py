@@ -1,7 +1,15 @@
 import subprocess
 
 
-def run_in_container(container_name: str, command: str, debug_print: bool = False):
+class SubprocessError(Exception):
+    """Raised when a command inside a Docker container fails."""
+
+    pass
+
+
+def run_in_container(
+    container_name: str, command: str, debug_print: bool = False
+) -> subprocess.CompletedProcess[str]:
     """Executes a command inside a Docker container.
 
     Args:
@@ -10,10 +18,10 @@ def run_in_container(container_name: str, command: str, debug_print: bool = Fals
         debug_print: Whether to print the command before execution (default: False).
 
     Returns:
-        The standard output from the executed command.
+        The completed process result, including returncode, stdout, and stderr.
 
     Raises:
-        SystemExit: If the command returns a non-zero exit code.
+        SubprocessError: If the command returns a non-zero exit code.
     """
     if debug_print:
         print(f"Running command in container {container_name}: {command}")
@@ -26,32 +34,17 @@ def run_in_container(container_name: str, command: str, debug_print: bool = Fals
     )
 
     if res.returncode != 0:
-        print("Error executing subprocess:")
-        print(f"Args: {res.args}")
-        print(f"stderr: {res.stderr}")
-        quit(1)
-    return res.stdout
+        print(
+            "Error executing subprocess:\n"
+            + f"  Container: {container_name}\n"
+            + f"  Command:   {res.args}\n"
+            + f"  stderr:    {res.stderr.strip()}"
+        )
+        raise SubprocessError(
+            f"Command failed in container '{container_name}' "
+            + f"(exit {res.returncode}): {res.stderr.strip()}"
+        )
 
-
-def set_on_all_interfaces(container_name: str, command: str, loss: float = 0.0):
-    """Applies a tc netem rule to all ethernet interfaces in a container.
-
-    Args:
-        container_name: The name of the Docker container.
-        command: The tc qdisc command operation (e.g., 'add', 'change', 'del').
-        loss: Packet loss percentage to apply (default: 0.0).
-
-    Returns:
-        Standard output from the executed command.
-    """
-    res = run_in_container(
-        container_name,
-        "cat /proc/net/dev | awk \"{print \$1}\" | grep -E -o '^eth[0-9]+' | xargs -I @ tc qdisc "
-        + command
-        + " dev @ root netem loss "
-        + str(loss)
-        + "%",
-    )
     return res
 
 
@@ -63,7 +56,7 @@ def set_on_interface(
     delay: float = 0,
     jitter: float = 0,
     bandwidth: str = "",
-):
+) -> str:
     """Applies network emulation (netem) rules to a specific container interface.
 
     Args:
@@ -79,16 +72,11 @@ def set_on_interface(
         Standard output from the executed command.
     """
     if delay > 1000:
-        delay_str = f"{delay//1000}s"
+        delay_str = f"{delay // 1000}s"
     else:
         delay_str = f"{delay}ms"
-    print(delay_str)
     cmd = f"tc qdisc {command} dev {interface} root netem loss {loss}% delay {delay_str} {jitter}ms"
     if bandwidth != "":
         cmd += f" rate {bandwidth}"
-    res = run_in_container(
-        container_name,
-        cmd,
-        debug_print=False,
-    )
-    return res
+    res = run_in_container(container_name, cmd)
+    return res.stdout

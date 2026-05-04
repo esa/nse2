@@ -92,11 +92,11 @@ def nodes_from_compose(path: str | PathLike[str]) -> NodeMap:
         networks: dict[NetworkName, NetworkConfig] = {}
         for network, conf in service.networks.items():
             res = run_in_container(name, f"ip a | grep {conf.ipv4_address}")
-            if len(res) == 0:
+            if len(res.stdout) == 0:
                 raise ValueError(
                     f"Failed to resolve interface for node '{name}' on network '{network}' with IP '{conf.ipv4_address}'"
                 )
-            iface = res.rsplit(" ", maxsplit=1)[1].strip()
+            iface = res.stdout.rsplit(" ", maxsplit=1)[1].strip()
             networks[network] = NetworkConfig(
                 network=network, iface=iface, ipv4=conf.ipv4_address
             )

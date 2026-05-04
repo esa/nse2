@@ -1,0 +1,6 @@
+The Network Simulation & Emulation Environment (NSE2) is a powerful tool designed to facilitate the simulation and emulation of network environments. 
+This manual provides a comprehensive guide to installing, configuring, and using NSE2 effectively.
+It also includes instructions for creating new simulation scenarios and understanding the file formats used by NSE2.
+
+NSE2 is built on top of Docker and Docker Compose, allowing users to create complex network topologies and simulate various network conditions. 
+It is intended for researchers, developers, and network engineers who need to test and validate network protocols, applications, and configurations in a controlled realtime environment.

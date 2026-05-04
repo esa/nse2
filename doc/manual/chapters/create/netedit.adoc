@@ -1,0 +1,59 @@
+To graphically create a simulation scenario, you can use the `netedit` tool. This tool provides a user-friendly interface for designing network topologies and configuring nodes and links. It is part of the https://github.com/gh0st42/pons[PONS-dtn] project, an open source discrete event simulator for delay-tolerant networks (DTNs), and allows one to export topology with link properties in http://graphml.graphdrawing.org/[GraphML] format.
+
+To use `netedit`, you must first install the `pons-dtn` package. You can do this by running the following command in your terminal:
+```bash
+pip install pons-dtn
+```
+
+You then can start `netedit` by running:
+```bash
+netedit
+```
+
+[TIP]
+==== 
+If you want to align positions of nodes with a background image you can point the `BG_IMG` environment variable to the image file you want to use as a background. For example:
+----
+BG_IMG=/path/to/your/background.png netedit
+----
+====
+
+==== Using `netedit`
+
+The UI provides a graphical representation of the network topology, allowing you to easily add, remove, and configure nodes and links.
+
+.Netedit in action, editing the link properties of a connection between node 2 and 1.
+image::images/netedit.png[width=90%, align="center", alt="Netedit in action, editing the link properties of a connection between node 2 and 1."]
+
+There are 4 modes of operation as indicated by the buttons in the top left corner of the UI:
+
+- **Select**: Select nodes to edit their properties.
+- **Move**: To change the position of a node by dragging.
+- **Node**: To add a new node to the topology, this can be either a _Switch_ or a _Host_.
+- **Link**: To create a new link between two nodes by dragging a line between them.
+
+The currently selected node is always highlighted in green in the topology canvas.
+
+Hosts can be either linked to another host via a 1:1 connection or to a switch, which can have multiple hosts connected to it. Switches are used to create a network segment where multiple hosts can communicate with each other.
+
+IMPORTANT: Switch nodes should always have their names prefixed with "net_" so the automatic converters can treat them properly and it makes it easier to identify them later on.
+
+On the right side of the UI, you can see the properties of the currently selected node and its links. You can edit the properties of the node, such as its name, type, and position, or the properties of the link, such as its bandwidth, delay, loss, and jitter.
+
+IMPORTANT: The `NODE_ID` number must be unique in the whole topology!
+
+TIP: In the link properties dialog, you can also set the link to be a dynamic link by checking the "Dynamic Link" checkbox. This will render the link as a dashed line, indicating that this is a non-permanent link.
+
+NOTE: Some advanced NSE2 features such as multiple parallel links between the same pair of nodes, or using specific network interfaces for the links, are not supported by `netedit` yet. You can still use the `compose.yml` file to define these features manually.
+
+Via the _File_ menu, you can save the current topology to a GraphML file, which can then be converted to a Docker Compose file.
+
+==== Converting GraphML to Docker Compose
+
+**TODO**
+
+==== Running the Scenario
+
+Once you have a proper Docker Compose file, you can run the scenario using the `nse2_topo` command. This command will start the Docker containers defined in the Compose file and set up the network topology as specified.
+
+Of course, you can also add a contact plan, actions file, and visualization file as described in <<manually>> to enhance the simulation experience.

@@ -1,0 +1,84 @@
+= Network Simulation & Emulation Environment (NSE2) Manual
+:revdate: 2025-07-02 Work in Progress
+:reproducible:
+:toc:
+:toclevels: 3
+:toc-title: Table of Contents
+:sectnums:
+:sectnumlevels: 3
+:title-page:
+:icons: font
+:source-highlighter: highlightjs
+:highlightjs-theme: github
+:highlightjs-languages: javascript, python, bash, json, xml, yaml, csv
+:pdf-page-size: A4
+:doctype: book
+:xrefstyle: short
+:listing-caption: Listing
+:product-name: NSE2
+:copyright: © 2025 European Space Agency (ESA)
+:keywords: network simulation, emulation, network testbed, NSE2, manual
+:subject: Network Simulation and Emulation Environment Manual
+Lars Baumgaertner <lars.baumgaertner@esa.int> 
+
+== Introduction
+
+include::chapters/intro.adoc[]
+
+== Installation
+
+include::chapters/installation.adoc[]
+
+[#running]
+== Running NSE2
+
+include::chapters/running.adoc[]
+
+== Creating a New Simulation Scenario
+
+include::chapters/create.adoc[]
+
+[#manually]
+=== Manually Creating a Scenario
+include::chapters/create/manually.adoc[]
+
+=== Using `netedit` to Create a Scenario (Work in Progress)
+include::chapters/create/netedit.adoc[]
+
+=== Using `csvconvert` to Create a Scenario (Work in Progress)
+include::chapters/create/convert.adoc[]
+
+
+== File Formats
+
+[#compose-format]
+=== _Topology_ File Format (`compose.yml`)
+
+include::chapters/formats/compose.adoc[]
+
+[#contactplan-format]
+=== _Core Contact Plan_ File Format (`contacts.ccp`)
+
+include::chapters/formats/contactplan.adoc[]
+
+[#actions-format]
+=== _Actions_ File Format (`actions.txt`)
+
+include::chapters/formats/actions.adoc[]
+
+[#viz-format]
+=== _Visualization_ File Format (`viz.json`)
+
+include::chapters/formats/viz.adoc[]
+
+=== Optional: Node File Format (`node.yml`)
+
+**TODO** 
+
+See CCSDS DTN Reference Scenarios Orange Book Draft for details on the node file format.
+
+=== Optional: Contacts File Format (`contacts.csv`)
+
+**TODO** 
+
+See CCSDS DTN Reference Scenarios Orange Book Draft for details on the node file format.

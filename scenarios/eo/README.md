@@ -67,6 +67,6 @@ An [example action file](eo.actions) is provided. It just starts a few processes
 2. if you want fluctuating connectivity and bandwidth limitations: `./start_net.sh`
 3. start the automatic actions on the nodes: `./start_actions.sh`
 4. *OPTIONALLY: start the network visualization: `./start_viz.sh`*
-5. *OPTIONALLY: start the docker test bed manager: `dtbm eo.compose.yml eo.testing.contacts.ccp`*
+5. *OPTIONALLY: start the docker test bed manager: `nse2_mgr eo.compose.yml eo.testing.contacts.ccp`*
 
-You can get an interactive shell on any of the nodes through docker: `docker exec -it <node> bash` or `sns_sh <node>`
+You can get an interactive shell on any of the nodes through docker: `docker exec -it <node> bash` or `nse2_sh <node>`

@@ -61,18 +61,14 @@ class ContactState(Enum):
 
 
 class ContactPlayer:
-    """Plays out a contact plan over a network simulation scenario.
-
-    Manages the state of scheduled contacts and applies network emulation (netem)
-    rules to the corresponding interfaces as the simulation time advances.
+    """Drives tc netem rules on container interfaces according to a contact schedule.
 
     Attributes:
-        scenario_name: The name of the scenario.
-        plan: The contact plan containing the scheduled contacts.
-        nodes: A mapping of node names to Node objects in the scenario.
-        contact_states: A dictionary tracking the current activation state of each scheduled contact.
-        permanent_links: A set of node pairs representing links in the topology that are not managed dynamically by the contact plan.
-        symmetric: Treat all contacts as symmetric (bidirectional).
+        scenario_name: Name of the scenario, used for netmap file output.
+        fixed_links: Links with static properties applied once on startup.
+        contacts: Scheduled contacts and their current activation state (PRE, LIVE, DONE).
+        permanent_links: Always-active node pairs from the compose topology
+                         not overridden by the contact schedule.
     """
 
     def __init__(
@@ -82,15 +78,35 @@ class ContactPlayer:
         nodes: NodeMap,
         symmetric: bool = False,
     ) -> None:
+        """
+        Args:
+            scenario_name: Name of the scenario, used for netmap file naming.
+            plan: The parsed contact plan defining fixed links and scheduled contacts.
+            nodes: The compose topology, used to derive permanent links.
+            symmetric: If True, each contact in the plan is duplicated in the reverse
+                       direction, so that link properties are applied on both endpoints.
+        """
         self.scenario_name: str = scenario_name
-        self.plan: ContactPlan = plan
-        self.nodes: NodeMap = nodes
-        self.symmetric: bool = symmetric
 
-        # scheduled contacts and their current activation state
-        self.contact_states: dict[Contact, ContactState] = {
-            c: ContactState.PRE for c in plan.contacts
+        contacts = plan.contacts
+        if symmetric:
+            contacts += [
+                Contact(
+                    src=c.dst,
+                    iface=c.dst.networks[c.network].iface,
+                    network=c.network,
+                    dst=c.src,
+                    props=c.props,
+                    begin=c.begin,
+                    end=c.end,
+                )
+                for c in contacts
+            ]
+
+        self.contacts: dict[Contact, ContactState] = {
+            c: ContactState.PRE for c in contacts
         }
+        self.fixed_links: list[FixedLink] = plan.fixed_links
 
         # links from the compose topology that are not managed contacts (that have changing properties)
         managed = {frozenset([link.src.name, link.dst.name]) for link in plan.contacts}
@@ -98,14 +114,14 @@ class ContactPlayer:
 
     def reset(self) -> None:
         """Reset all contacts to the PRE state, so that the simulation can start over."""
-        for c in self.contact_states:
-            self.contact_states[c] = ContactState.PRE
+        for c in self.contacts:
+            self.contacts[c] = ContactState.PRE
 
     def active_contact_links(self) -> set[frozenset[str]]:
         """Return the set of active contact links as undirected node pairs without duplicates."""
         return {
             frozenset([c.src.name, c.dst.name])
-            for c, s in self.contact_states.items()
+            for c, s in self.contacts.items()
             if s == ContactState.LIVE
         }
 
@@ -132,17 +148,17 @@ class ContactPlayer:
         Args:
             time: The current simulation time.
         """
-        for contact, state in self.contact_states.items():
+        for contact, state in self.contacts.items():
             if contact.is_active(time):
                 if state == ContactState.PRE:
                     print(f"[ {time} ] Activating {contact}")
                     self.apply(contact)
-                    self.contact_states[contact] = ContactState.LIVE
+                    self.contacts[contact] = ContactState.LIVE
             else:
                 if state == ContactState.LIVE:
                     print(f"[ {time} ] Deactivating {contact}")
                     self.apply(contact, deactivate=True)
-                    self.contact_states[contact] = ContactState.POST
+                    self.contacts[contact] = ContactState.POST
 
     def next_event_time(self, after: int) -> int | None:
         """Return the next simulation time at which a contact changes state.
@@ -154,7 +170,7 @@ class ContactPlayer:
             The next event time, or None if there are no upcoming events.
         """
         candidates: list[int] = []
-        for contact, state in self.contact_states.items():
+        for contact, state in self.contacts.items():
             if state == ContactState.PRE and contact.begin >= after:
                 candidates.append(contact.begin)
             if state == ContactState.LIVE and contact.end >= after:
@@ -188,27 +204,19 @@ class ContactPlayer:
             jitter=contact.props.jitter,
             bandwidth=contact.props.bandwidth,
         )
-        if self.symmetric:
-            if contact.network not in contact.dst.networks:
-                raise ReferenceError(
-                    f"Error: node {contact.dst.name} is not connected to network {contact.network}"
-                )
-            set_on_interface(
-                contact.dst.name,
-                contact.dst.networks[contact.network].iface,
-                command=command,
-                loss=loss,
-                delay=contact.props.delay,
-                jitter=contact.props.jitter,
-                bandwidth=contact.props.bandwidth,
-            )
 
     def teardown(self) -> None:
         """Remove all tc netem rules set by this player and delete the generated netmap file."""
-        for link in self.plan.fixed_links:
-            self.apply(link, command="del")
-        for contact in self.contact_states:
-            self.apply(contact, command="del")
+        for link in self.fixed_links:
+            print(
+                f"Removing tc netem rules for: node {link.src.name} on interface {link.iface}"
+            )
+            set_on_interface(link.src.name, link.iface, command="del")
+
+        for node, iface in {(c.src.name, c.iface) for c in self.contacts}:
+            print(f"Removing tc netem rules for: node {node} on interface {iface}")
+            set_on_interface(node, iface, command="del")
+
         # delete the netmap file
         netmap_file = Path("tmp") / f"{self.scenario_name}.netmap"
         netmap_file.unlink(missing_ok=True)
@@ -223,13 +231,17 @@ def main() -> None:
     player = ContactPlayer(scenario_path.stem, plan, nodes, symmetric=args.symmetric)
 
     print("Permanent links: ", player.permanent_links)
-    print("Fluctuating Contacts: ", player.contact_states.keys())
+    print("Fluctuating Contacts: ", player.contacts.keys())
 
-    # apply initial network configuration to fluctuating contacts and fixed links
-    for contact in player.contact_states:
-        player.apply(contact, command="add", deactivate=True)
-    for link in player.plan.fixed_links:
-        player.apply(link, command="add")
+    for link in player.fixed_links:
+        print(
+            f"Initilizing netem rules for: node {link.src.name} on interface {link.iface}"
+        )
+        set_on_interface(link.src.name, link.iface, command="add")
+
+    for node, iface in {(c.src.name, c.iface) for c in player.contacts}:
+        print(f"Initilizing netem rules for: node {node} on interface {iface}")
+        set_on_interface(node, iface, command="add")
 
     # setup handler to intercept ctrl c
     def handle_sigint(sig, frame) -> None:

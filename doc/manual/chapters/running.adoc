@@ -1,0 +1,311 @@
+
+In this section, we will cover how to run NSE2, including starting a simulation as well as interacting with the simulation using the Command Line Interface (CLI) (<<cli-usage>>), the Management Web UI (<<mgr-usage>>) and the visualization frontend (<<viz-usage>>). 
+We will also provide an example scenario to demonstrate how to set up and run a simulation in NSE2.
+
+=== Example Scenario Overview
+
+For demonstration purposes, we will use the `simple` scenario, located in `scenarios/simple/`, which is a basic network simulation scenario included with NSE2.
+Here, we have three nodes (n1, n2, and n3) connected in a straight line (<<FigSimpleTopology>>).
+
+// .Network topology diagram of the `simple` scenario
+// [mermaid, format="png", id="FigSimpleTopology"]
+//----
+//  graph LR;
+//  n1[Node 1] <--> n2[Node 2];
+//  n2 <--> n3[Node 3];
+
+//----
+
+.Network topology diagram of the `simple` scenario
+[plantuml, format="png", id="FigSimpleTopology"]
+----
+left to right direction
+rectangle n1
+rectangle n2
+rectangle n3
+
+n1 <--> n2
+n2 <--> n3
+----
+
+In our example scenario we can find the following files:
+[source, bash]
+----
+$ ls scenarios/simple/
+compose.yml  contacts.ccp  actions.txt viz.json run.sh
+----
+
+This is the minimal set of files required to run a simulation in NSE2 that has a topology, fluctuating contacts, and automated actions plus some optional information for the visualization frontend.
+
+The `compose.yml` file defines the network topology and the nodes in the simulation, while the `contacts.ccp` file defines the contact plan for the nodes, the `actions.txt` file defines actions to be performed during the simulation, and the `viz.json` file provides visualization data.
+
+The example `compose.yml` file (<<exampleSimpleCompose>>) defines three nodes (n1, n2, and n3) connected in a straight line. Each node is configured with an IP address and a Docker image to run. The network interfaces are defined in the `networks` section, and the Docker Compose file specifies how the nodes are connected.
+A detailed description of the compose file format can be found in <<compose-format>>.
+
+
+CAUTION: The docker image must contain `tc` and `iproute2` tools to allow for network configuration and traffic control. In our example, we use the Alpine Linux image, which is lightweight and suitable for this purpose but may require additional packages to be installed.
+
+
+.Compose file of the simple scenario.
+[source, yaml, id="exampleSimpleCompose"]
+----
+include::../../../scenarios/simple/compose.yml[]
+----
+
+The contact plan (<<exampleSimpleContacts>>) defines the communication links between the nodes, including bandwidth, delay, loss, and jitter. In our example, we have a fixed contact between n1 and n2 with a bandwidth of 100 Mbps and a delay of 100 ms, and a fluctuating contact between n2 and n3 with a bandwidth of 2 Mbps, a delay of 10 ms, and a time window from 20 to 40 seconds.
+Also, we set the contact plan to loop, meaning that the contacts will be repeated indefinitely.
+A detailed description of the contacts file format can be found in <<contacts-format>>.
+
+
+.Core contact plan of the simple scenario.
+[source, csv, id="exampleSimpleContacts"]
+----
+include::../../../scenarios/simple/contacts.ccp[]
+----
+
+The actions file (<<exampleSimplActions>>) defines the actions to be performed during the simulation. 
+In our example, at first we log the start time on each node, then we schedule a repeated process on each node to log the link properties every 10 seconds by sending ping requests between the nodes. The actions file also includes a cleanup step that logs the finish time and terminates long-running processes at the end of the simulation.
+A detailed description of the actions file format can be found in <<actions-format>>.
+
+.Example actions file of the simple scenario.
+[source, csv, id="exampleSimplActions"]
+----
+include::../../../scenarios/simple/actions.txt[]
+----
+
+=== Starting a Simulation
+
+The following steps need to be performed to start a simulation in NSE2:
+
+. Start the topology: `nse2_topo compose.yml`
+. Start the contacts: `nse2_contacts -m -s contacts.ccp`
+. Start the actions: `nse2_actions actions.txt`
+. Optionally, start the node manager: `nse2_mgr compose.yml contacts.ccp`
+
+HINT: Use a terminal multiplexer like `tmux` or `screen` to run these commands in separate windows, allowing you to monitor the simulation in real-time.
+
+Here, an example session starting the simulation.
+[source]
+----
+$ nse2_topo compose.yml 
+Running scenario compose.yml
+[+] Running 5/5
+ ✔ Network simpletestscenario_n1_n2  Created                                   0.0s 
+ ✔ Network simpletestscenario_n2_n3  Created                                   0.0s 
+ ✔ Container n2                      Started                                   0.4s 
+ ✔ Container n3                      Started                                   0.4s 
+ ✔ Container n1                      Started                                   0.4s 
+n1  | fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz
+n2  | fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz
+n3  | fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz
+n2  | fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/community/x86_64/APKINDEX.tar.gz
+n1  | fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/community/x86_64/APKINDEX.tar.gz
+n3  | fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/community/x86_64/APKINDEX.tar.gz
+n2  | (1/13) Installing ncurses-terminfo-base (6.5_p20241006-r3)
+n2  | (2/13) Installing libncursesw (6.5_p20241006-r3)
+n2  | (3/13) Installing readline (8.2.13-r0)
+n2  | (4/13) Installing bash (5.2.37-r0)
+n2  | Executing bash-5.2.37-r0.post-install
+n2  | (5/13) Installing libcap2 (2.71-r0)
+n2  | (6/13) Installing zstd-libs (1.5.6-r2)
+n2  | (7/13) Installing libelf (0.191-r0)
+n2  | (8/13) Installing libmnl (1.0.5-r2)
+n2  | (9/13) Installing iproute2-minimal (6.11.0-r0)
+n1  | (1/13) Installing ncurses-terminfo-base (6.5_p20241006-r3)
+n2  | (10/13) Installing libxtables (1.8.11-r1)
+n3  | (1/13) Installing ncurses-terminfo-base (6.5_p20241006-r3)
+n2  | (11/13) Installing iproute2-tc (6.11.0-r0)
+n1  | (2/13) Installing libncursesw (6.5_p20241006-r3)
+n3  | (2/13) Installing libncursesw (6.5_p20241006-r3)
+n2  | (12/13) Installing iproute2-ss (6.11.0-r0)
+n1  | (3/13) Installing readline (8.2.13-r0)
+n2  | (13/13) Installing iproute2 (6.11.0-r0)
+n3  | (3/13) Installing readline (8.2.13-r0)
+n2  | Executing iproute2-6.11.0-r0.post-install
+n2  | Executing busybox-1.37.0-r12.trigger
+n2  | OK: 11 MiB in 28 packages
+n1  | (4/13) Installing bash (5.2.37-r0)
+n3  | (4/13) Installing bash (5.2.37-r0)
+n1  | Executing bash-5.2.37-r0.post-install
+n1  | (5/13) Installing libcap2 (2.71-r0)
+n3  | Executing bash-5.2.37-r0.post-install
+n3  | (5/13) Installing libcap2 (2.71-r0)
+n1  | (6/13) Installing zstd-libs (1.5.6-r2)
+n3  | (6/13) Installing zstd-libs (1.5.6-r2)
+n1  | (7/13) Installing libelf (0.191-r0)
+n3  | (7/13) Installing libelf (0.191-r0)
+n1  | (8/13) Installing libmnl (1.0.5-r2)
+n3  | (8/13) Installing libmnl (1.0.5-r2)
+n1  | (9/13) Installing iproute2-minimal (6.11.0-r0)
+n3  | (9/13) Installing iproute2-minimal (6.11.0-r0)
+n1  | (10/13) Installing libxtables (1.8.11-r1)
+n3  | (10/13) Installing libxtables (1.8.11-r1)
+n1  | (11/13) Installing iproute2-tc (6.11.0-r0)
+n3  | (11/13) Installing iproute2-tc (6.11.0-r0)
+n1  | (12/13) Installing iproute2-ss (6.11.0-r0)
+n3  | (12/13) Installing iproute2-ss (6.11.0-r0)
+n1  | (13/13) Installing iproute2 (6.11.0-r0)
+n3  | (13/13) Installing iproute2 (6.11.0-r0)
+n1  | Executing iproute2-6.11.0-r0.post-install
+n1  | Executing busybox-1.37.0-r12.trigger
+n1  | OK: 11 MiB in 28 packages
+n3  | Executing iproute2-6.11.0-r0.post-install
+n3  | Executing busybox-1.37.0-r12.trigger
+n3  | OK: 11 MiB in 28 packages
+---- 
+
+Now all three nodes are running and ready to be configured.
+
+Next step is to start the contact player, which will establish the communication links between the nodes based on the contact plan defined in `contacts.ccp`.
+[source]
+----
+$ nse2_contacts -m contacts.ccp
+Loading scenario from compose.yml.
+Node ipn:1.0 connected to network n1_n2 with 172.33.0.2
+Node ipn:2.0 connected to network n1_n2 with 172.33.0.3
+Node ipn:2.0 connected to network n2_n3 with 172.33.1.2
+Node ipn:3.0 connected to network n2_n3 with 172.33.1.3
+Created 3 nodes.
+[('n1', 'n2', '-'), ('n2', 'n3', '-')]
+['n1', 'n2', '100000000', '0.0', '0.1', '0.0'] 6
+CoreContact(timespan=(0, 0), nodes=('n1', 'n2'), bw=100000000, loss=0.000000, delay=0.100000, jitter=0.000000)
+['n2', 'n1', '100000000', '0.0', '0.1', '0.0'] 6
+CoreContact(timespan=(0, 0), nodes=('n2', 'n1'), bw=100000000, loss=0.000000, delay=0.100000, jitter=0.000000)
+['20', '40', 'n2', 'n3', '2000000', '0.0', '0.01', '0.0'] 8
+CoreContact(timespan=(20, 40), nodes=('n2', 'n3'), bw=2000000, loss=0.000000, delay=0.010000, jitter=0.000000)
+['20', '40', 'n3', 'n2', '2000000', '0.0', '0.01', '0.0'] 8
+CoreContact(timespan=(20, 40), nodes=('n3', 'n2'), bw=2000000, loss=0.000000, delay=0.010000, jitter=0.000000)
+all contacts sorted pairs:  [('n2', 'n3', '-'), ('n2', 'n3', '-')]
+links:  [('n1', 'n2', '-')]
+Link:  ('n1', 'n2', '-')
+new link:  ('n1', 'n2', '-')
+Updating network map tmp/compose.netmap
+Setting up tc for n3 on device n2_n3_0 with 100% loss
+0ms
+Setting up tc for n2 on device n2_n3_0 with 100% loss
+0ms
+Activating fixed contact CoreContact(timespan=(0, 0), nodes=('n1', 'n2'), bw=100000000, loss=0.000000, delay=0.100000, jitter=0.000000)
+0.1ms
+Activating fixed contact CoreContact(timespan=(0, 0), nodes=('n2', 'n1'), bw=100000000, loss=0.000000, delay=0.100000, jitter=0.000000)
+0.1ms
+[ 0 ] Next event(s) at 20
+[ 20 ] Activating CoreContact(timespan=(20, 40), nodes=('n2', 'n3'), bw=2000000, loss=0.000000, delay=0.010000, jitter=0.000000)
+0.01ms
+[ 20 ] Activating CoreContact(timespan=(20, 40), nodes=('n3', 'n2'), bw=2000000, loss=0.000000, delay=0.010000, jitter=0.000000)
+0.01ms
+Link:  ('n1', 'n2', '-')
+new link:  ('n1', 'n2', '-')
+Link:  ('n2', 'n3', '.')
+new link:  ('n2', 'n3', '.')
+Updating network map tmp/compose.netmap
+[ 20 ] Next event(s) at 40
+----
+
+Now, we can start the actions defined in `actions.txt`, which will execute the actions during the simulation.
+[source]
+----
+$ nse2_actions actions.txt
+Warning: DURATION variable is not, REPEATing till infinity
+0 5 10
+[0] Executing commands on: n1 n2 n3 
+[0]   n1: date > /tmp/started.txt
+[0]   n2: date > /tmp/started.txt
+[0]   n3: date > /tmp/started.txt
+[5] Executing commands on: n1 
+[5] / 10  n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[5]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[10] Executing commands on: n2 
+[10] / 10  n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[10]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[15]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[20]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[25]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[30]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[35]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[40]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[45]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[50]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[55]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[60]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[65]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[70]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[75]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[80]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[85]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[90]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[95]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+[100]   n2: (date ; ping -c 1 -s 200 -W1 -w1 n3; echo ----------------------) >> /tmp/n3.txt
+[105]   n1: (date ; ping -c 1 -s 200 -W1 -w1 n2; echo ----------------------) >> /tmp/n2.txt
+^CCleaning up...
+   n3: date > /tmp/finished.txt && pkill -f ping ;  true
+   n2: date > /tmp/finished.txt && pkill -f ping ;  true
+   n1: date > /tmp/finished.txt && pkill -f ping ;  true
+
+
+----
+
+[#cli-usage]
+=== Interacting with the Simulation using the Command Line Interface (CLI)
+
+Once the simulation is running, you can interact with it using the NSE2 Command Line Interface (CLI).
+With `nse2_sh` you can connect to any running node and start using it interactively.
+
+[source]
+----
+$ nse2_sh n1
+n1:/# ls /tmp/
+n2.txt started.txt
+n1:/# ping n2
+PING n2 (172.33.0.3): 56 data bytes
+64 bytes from 172.33.0.3: seq=0 ttl=64 time=0.271 ms
+64 bytes from 172.33.0.3: seq=1 ttl=64 time=0.329 ms
+^C
+--- n2 ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.271/0.300/0.329 ms
+----
+
+TIP: You can use all standard docker tools to interact with the nodes, such as `docker exec`, `docker logs`, and `docker ps`.
+
+You can also interact with the simulation contacts backend using `nse2_cmd`.
+It can be used to get information about the current scenario, active links, simulation time and control the playback of the contacts file, e.g., pause/resume, skip to next event, etc.
+
+[#mgr-usage]
+=== Interacting with the Simulation using the Management Web UI
+
+To control the simulation, you can use the Management Web UI (`nse2_mgr`), which provides a graphical interface to manage the simulation.
+Amongst others, it provides you with the following features:
+- View the current state of the simulation, including the nodes and contacts.
+- Access to shell and logs of each node.
+- Pause and skipping ahead for the contacts.
+- View and modification of dynamically managed contacts.
+   - Activate and deactivate contacts.
+   - Change bandwidth, delay, loss, and jitter of contacts.
+
+IMPORTANT: Opening the logs or a terminal requires X11 forwarding (set `DISPLAY` environment variable) and an installed `xterm` on the host system running the manager.
+
+[#viz-usage]
+=== Visualizing the Simulation 
+
+To visualize the simulation using `nse2_viz`, you can use the `viz.json` file, which provides visualization data for the nodes and contacts.
+
+NSE2 provides a simple web-based visualization frontend to graphically represent the current state of the simulation. 
+It displays a log file, the nodes, their (configured) positions, and the contacts between them.
+Optionally, it can also put a background image behind the nodes to provide a better context for the simulation, e.g., a map of the area where the nodes are located.
+The list of nodes also provides quick access to a terminal on each nodes.
+
+IMPORTANT: Opening a terminal requires X11 forwarding (set `DISPLAY` environment variable) and an installed `xterm` on the host system running the manager.
+
+The visualization frontend is started by running the `nse2_viz` command, which reads the `viz.json` file and starts a web server to serve the visualization.
+
+[source,language=json]
+----
+include::../../../scenarios/simple/viz.json[]
+----
+
+A detailed description of the visualization file format can be found in <<viz-format>>.
+
+IMPORTANT: To get a proper visualization of the active links, `nse2_contacts` must be started with the `-m` option to periodically generate a mapping file with all active links.
+
+The visualization frontend is very basic but can easily be extended to provide scenario and simulation specific information.
+

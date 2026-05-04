@@ -1,0 +1,67 @@
+name: simple test scenario
+services:
+  n1:
+    container_name: n1
+    hostname: n1
+    cap_add:
+    - NET_ADMIN
+    privileged: 'true'
+    volumes:
+    - ./compose.yml:/compose.yml:ro
+    environment:
+    - NODE_ID=1
+    - TYPE=Host
+    networks:
+      n1_n2:
+        ipv4_address: 172.33.0.2
+    entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'
+    image: alpine
+  n2:
+    container_name: n2
+    hostname: n2
+    cap_add:
+    - NET_ADMIN
+    privileged: 'true'
+    volumes:
+    - ./compose.yml:/compose.yml:ro
+    environment:
+    - NODE_ID=2
+    - TYPE=Host
+    networks:
+      n1_n2:
+        ipv4_address: 172.33.0.3
+      n2_n3:
+        ipv4_address: 172.33.1.2
+    entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'
+    image: alpine
+  n3:
+    container_name: n3
+    hostname: n3
+    cap_add:
+    - NET_ADMIN
+    privileged: 'true'
+    volumes:
+    - ./compose.yml:/compose.yml:ro
+    environment:
+    - NODE_ID=3
+    - TYPE=Host
+    networks:
+      n2_n3:
+        ipv4_address: 172.33.1.3
+    entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'
+    image: alpine
+networks:
+  n1_n2:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.33.0.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: n1_n2_
+  n2_n3:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.33.1.0/24
+    driver_opts:
+      com.docker.network.container_iface_prefix: n2_n3_

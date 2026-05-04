@@ -1,0 +1,48 @@
+The basic scenario and network topology is defined as a regular docker compose file.
+
+You can start from scratch of use an existing compose file as a template. The compose file is written in YAML format and defines the services, networks, and volumes that make up the simulation environment.
+
+[source,language=yaml]
+----
+include::../../../../scenarios/simple/compose.yml[]
+----
+
+==== Setting up the Nodes
+
+Each node is represented by a service in the compose file.
+In addition, one should explicitly set the `container_name` and `hostname` for each node to ensure that the names are consistent across different runs of the simulation.
+
+Furthermore, for the network emulation to work correctly, the `NET_ADMIN` capability must be added to the container. This is done by setting the `cap_add` option in the compose file. 
+And the container should run in `privileged` mode to allow full access to the network stack.
+Also, the ip address of the node for a specific network can be set using the `networks` option in the compose file.
+
+You set the container `image` or alternatively the `build` option to specify the Dockerfile to build the image for the node.
+
+IMPORTANT: The container images used for the nodes must have `iproute2` installed so that `tc qdisc` can be used to configure the network emulation for the link effects. Also, for very large delays, e.g., several minutes like to mars, a version of `iproute2` from https://git.kernel.org/pub/scm/network/iproute2/iproute2.git/commit/?id=9a6b231ea1b09e450688c5814a4c89a57cdbee77[mid 2024] or later is required.
+
+There are a few optional things to configure for each node:
+
+- Sharing the compose and contact plan files `read-only` with the node container (`./compose.yml:/compose.yml:ro`, `./contacts.ccp:/contacts.ccp:ro`), so that the node can parse the topology if needed, for routing purposes.
+- Set the `environment` variables `NODE_ID` to a unique number, e.g., to use for IPN auto configuration in DTN networks. This is useful for the node to identify itself in the simulation.
+
+Of course, you can also add custom entry points or any other environment variables that are needed for the node to run, such as configuration files or other parameters specific to the service.
+
+TIP: Sometimes it is useful to wrap your `entrypoint` commands should be wrapped in a `bash -c` command to ensure that the commands are executed in a shell environment. This is especially useful if you want to use shell features like variable expansion or command substitution. An example of this would be: `entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'`
+
+==== Setting up the Networks
+
+In general, it is advised to use a separate network for each pair of nodes. Thus, the network name should be unique for each pair of nodes, e.g., `n1n2` for the network between node 1 and node 2.
+
+CAUTION: Network names must be unique across the entire compose file, so that they can be used to connect the nodes to the correct network. And, similar, to network interface names, network names must not contain any spaces or special characters, except for `-` and `_`, and best to keep them below 15 characters in length.
+
+If no contact plan is used for a specific network segment, multiple nodes can be connected to the same network, e.g., `SWITCH1` for node 1 and node 2 and node 3. This is useful for scenarios where multiple nodes are connected to the same network segment, such as a LAN or a Wi-Fi network.
+
+NOTE: By default the `driver` should be set to `bridge`, which is the default Docker network driver. This allows the nodes to communicate with each other over the network.
+
+CAUTION: With the default `bridge` driver, the network is not isolated from the host network, so that the nodes can access the host network (including the Internet) and vice versa. This can lead to unexpected behavior if the nodes are not properly configured to handle this. If you want to isolate the network from the host network, you can use the `macvlan` driver instead, which creates a virtual network interface for each node that is isolated from the host network.
+
+Additionally, it can be helpful to set the `ipam` option to specify the IP address range for the network, e.g., `ipam: {config: [{subnet: "172.33.0.0/24"}]}`.
+
+Finally, if you expect multiple links between the same pair of nodes, you can use specific network interfaces for the link (`com.docker.network.container_iface_prefix`). This prefix is used for the actual network interface name in the node container. Contact plans can then refer to these interfaces by their name, e.g., `dev:eth0` or `dev:n1_n2_0` for the second interface, and so on, instead of using the node name as second node.
+
+WARNING: Network names in docker are global. Thus, running two scenarios with the same network names in parallel will lead to conflicts!

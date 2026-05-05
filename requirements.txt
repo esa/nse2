@@ -1,5 +1,5 @@
 matplotlib==3.9.2
 networkx==3.3
-nicegui==2.2.0
+nicegui==3.10.0
 pyaml==24.9.0
 python-dateutil==2.9.0.post0

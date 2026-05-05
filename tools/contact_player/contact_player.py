@@ -237,11 +237,11 @@ def main() -> None:
         print(
             f"Initilizing netem rules for: node {link.src.name} on interface {link.iface}"
         )
-        set_on_interface(link.src.name, link.iface, command="add")
+        player.apply(link, command="add")
 
     for node, iface in {(c.src.name, c.iface) for c in player.contacts}:
         print(f"Initilizing netem rules for: node {node} on interface {iface}")
-        set_on_interface(node, iface, command="add")
+        set_on_interface(node, iface, command="add", loss=100)
 
     # setup handler to intercept ctrl c
     def handle_sigint(sig, frame) -> None:

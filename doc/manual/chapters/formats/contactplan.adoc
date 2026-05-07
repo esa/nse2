@@ -2,7 +2,7 @@ The format of the contact plan file is `.ccp`, which stands for _Core Contact Pl
 This file defines the communication links between nodes, including properties such as bandwidth, delay, loss, and jitter. 
 The contact plan is essential for simulating realistic network conditions in NSE2.
 
-Links between nodes can be fixed or fluctuating, and the plan can either be configured to have symmetric (one line per node pair) or asymmetric links (two lines per node pair - one per direction).
+Links between nodes can be fixed or fluctuating. Each link can be marked as symmetric by appending `=` as the final field, which causes `nse2_contacts` to apply the link properties in both directions. When `=` is omitted, the link is treated as one-way (asymmetric).
 
 Each dynamic contact is defined by a time window, which specifies when the contact is active.
 Other tools can be used to simulate actual node movement and calculate visibility for the contact plan from this. 
@@ -12,14 +12,10 @@ The contact plan file is structured in a way that allows for easy parsing and in
 
 [source, id="exampleSimpleContacts2"]
 ----
-# each entry starts with "a contact" or "a fixed"	
-# a fixed <node id 1 OR name> <node id 2 OR name OR dev:<interfacename> > <bandwidth> [loss%] [delay] [jitter]
-# a contact <begin timestamp in seconds> <end timestamp in seconds> <node id 1 OR name> <node id 2 OR name OR dev:<interfacename> > <bandwidth> [loss%] [delay] [jitter]
-
 include::../../../../scenarios/simple/contacts.ccp[]
 ----
 
-Optionally, variables such as `loop` can be `s` et to 1 to indicate that the contact plan should be repeated indefinitely if the simulation runs longer than the last timestamp. This can also be overriden by the `--loop` command line option when starting the simulation with `nse2_contacts`.
+Optionally, variables such as `loop` can be set to `1` to indicate that the contact plan should be repeated indefinitely if the simulation runs longer than the last timestamp. This can also be overridden by the `--loop` command line option when starting the simulation with `nse2_contacts`.
 
 The first node must always be specified by its name, while the second node can be specified by its name or by its interface name (e.g., `dev:eth0`).
 This allows for flexibility in defining contacts, especially in scenarios where nodes have multiple interfaces to the same next-hop node or are part of a larger network topology.
@@ -32,6 +28,6 @@ a contact 20 40 n3 n2 2mbit 0.0 0.01 0.0
 ----
 ====
 
-IMPORTANT: When a contact plan was designed with symmetric links in mind, it is necessary to use the `--symmetric` command line option when starting the simulation with `nse2_contacts` to automatically create the second line for each contact.
+IMPORTANT: To mark a contact or fixed link as symmetric, append `=` as the last field on the line. This causes `nse2_contacts` to apply the link properties to both nodes automatically, without needing a second line for the reverse direction. The global `--symmetric` command-line option has been removed in favor of this per-contact approach.
 
 TIP: You can interact with the contact plan file using `nse2_cmd` to get information about the running scenario, current links, and other properties. Additionally, you can control the playback of the contact plan, such as pausing or resuming the simulation, skipping to the next event, etc. This is useful for debugging and testing scenarios with dynamic contacts.

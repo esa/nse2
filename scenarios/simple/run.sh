@@ -53,7 +53,7 @@ wait_for_nodes "OK:"
 tmux split-window -t $SESSION_NAME:0 -h
 
 # start the scenario with the contacts plan
-tmux send-keys -t $SESSION_NAME "nse2_contacts -l 1 -s -m $COMPOSE_FILE $CONTACTS_FILE" C-m
+tmux send-keys -t $SESSION_NAME "nse2_contacts -l 1 -m $COMPOSE_FILE $CONTACTS_FILE" C-m
 
 # split the window vertically
 tmux split-window -t $SESSION_NAME:0 -v

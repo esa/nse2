@@ -78,7 +78,7 @@ include::../../../scenarios/simple/actions.txt[]
 The following steps need to be performed to start a simulation in NSE2:
 
 . Start the topology: `nse2_topo compose.yml`
-. Start the contacts: `nse2_contacts -m -s contacts.ccp`
+. Start the contacts: `nse2_contacts -m contacts.ccp`
 . Start the actions: `nse2_actions actions.txt`
 . Optionally, start the node manager: `nse2_mgr compose.yml contacts.ccp`
 

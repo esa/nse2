@@ -1,6 +1,6 @@
 The basic scenario and network topology is defined as a regular docker compose file.
 
-You can start from scratch of use an existing compose file as a template. The compose file is written in YAML format and defines the services, networks, and volumes that make up the simulation environment.
+You can start from scratch or use an existing compose file as a template. The compose file is written in YAML format and defines the services, networks, and volumes that make up the simulation environment.
 
 [source,language=yaml]
 ----
@@ -27,7 +27,7 @@ There are a few optional things to configure for each node:
 
 Of course, you can also add custom entry points or any other environment variables that are needed for the node to run, such as configuration files or other parameters specific to the service.
 
-TIP: Sometimes it is useful to wrap your `entrypoint` commands should be wrapped in a `bash -c` command to ensure that the commands are executed in a shell environment. This is especially useful if you want to use shell features like variable expansion or command substitution. An example of this would be: `entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'`
+TIP: Sometimes it is useful to wrap your `entrypoint` commands in a `bash -c` command to ensure that the commands are executed in a shell environment. This is especially useful if you want to use shell features like variable expansion or command substitution. An example of this would be: `entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'`
 
 ==== Setting up the Networks
 

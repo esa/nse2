@@ -52,8 +52,8 @@ flowchart LR
 ## Contacts
 
 For this scenario, two contact plans are provided:
-- [eo.testings.contacts](eo.testings.contacts): this simple plan is just alternating between both ground stations with 30s of no contact in between.
-- [eo.realtime.contacts](eo.realtime.contacts): this plan has realistic contacts and runs in realtime, thus, long delays between contacts.
+- [eo.testing.contacts.ccp](eo.testing.contacts.ccp): this simple plan is just alternating between both ground stations with 30s of no contact in between.
+- [eo.realtime.contacts.ccp](eo.realtime.contacts.ccp): this plan has realistic contacts and runs in realtime, thus, long delays between contacts.
 
 By default the `start_net.sh` script runs the testing contacts but you can provide another contact plan as first parameter.
 

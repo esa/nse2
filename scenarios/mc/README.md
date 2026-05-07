@@ -69,13 +69,13 @@ flowchart LR
 ## Datarates
 
 
-|  from\to     | User Control Centre | Relay Control Centre  | Ground Station | Relay | Lunar Asset |
+|  from\to     | User Control Centre | Relay Control Centre  | Ground Station | Relay | Mars Asset |
 | -            | -              | -                     | -              | -     | -           |
 | __User Control Centre__ | /   | 100                   | 100            | 0     | 0           |
 | __Relay Control Centre__ | 100| /                     | 100            | 0     | 0           |
 | __Ground Station__ | 100      | 100                   | /              | 30    | 30          |      
 | __Relay__ | 0                 | 0                     | 100            | 0   | 100         | 
-| __Lunar Asset__ | 0           | 0                     | 100            | 15    | /
+| __Mars Asset__ | 0           | 0                     | 100            | 15    | /
 
 
 ## Docker: Running the Scenario

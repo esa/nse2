@@ -6,4 +6,4 @@ if [ -n "$1" ]; then
   CONTACTS="$1"
 fi
 
-nse2_contacts -m -s lc.compose.yml $CONTACTS
+nse2_contacts -m lc.compose.yml $CONTACTS

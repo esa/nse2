@@ -48,9 +48,6 @@ def load_scenario(path):
 parser = argparse.ArgumentParser()
 parser.add_argument("-l", "--loop", metavar="LOOP", type=bool, help="Override looping")
 parser.add_argument(
-    "-s", "--symmetric", action="store_true", help="Treat all contacts as symmetric"
-)
-parser.add_argument(
     "-m", "--map-network", help="Map network links", action="store_true"
 )
 parser.add_argument("scenario", help="scenario file to load")
@@ -92,7 +89,7 @@ def get_dev_for_subnet(node: str, subnet: str, nodes: dict) -> str:
     return nodes[node][subnet]["dev"]
 
 
-def set_link(contact: CoreContact, deactivate=False, command="change", symmetric=False):
+def set_link(contact: CoreContact, deactivate=False, command="change"):
     node1 = contact.nodes[0]
     node2 = contact.nodes[1]
 
@@ -120,7 +117,7 @@ def set_link(contact: CoreContact, deactivate=False, command="change", symmetric
     )
 
     # set links symmetrically, so also on the second node
-    if symmetric:
+    if contact.symmetric:
         set_on_interface(
             node2,
             get_dev_for_subnet(node2, link, nodes),
@@ -375,7 +372,7 @@ while True:
     cur_time = next_event
     for contact, state in plan.need_activation(cur_time):
         print("[ %d ] Activating %s" % (cur_time, contact))
-        set_link(contact, symmetric=args.symmetric)
+        set_link(contact)
         l = sorted([contact.nodes[0], contact.nodes[1]])
         l.append(".")
         static_link = (l[0], l[1], "-")
@@ -387,7 +384,7 @@ while True:
 
     for contact, state in plan.need_deactivation(cur_time):
         print("[ %d ] Deactivating %s" % (cur_time, contact))
-        set_link(contact, deactivate=True, symmetric=args.symmetric)
+        set_link(contact, deactivate=True)
         l = sorted([contact.nodes[0], contact.nodes[1]])
         l.append(".")
         try:

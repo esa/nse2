@@ -78,7 +78,10 @@ def get_dev_for_subnet(node: str, subnet: str, nodes: dict[str, Node]) -> str:
 
 
 def set_link(
-    contact: CoreContact, deactivate: bool = False, command: str = "change"
+    contact: CoreContact,
+    nodes: dict[str, Node],
+    deactivate: bool = False,
+    command: str = "change",
 ) -> None:
     node1 = contact.nodes[0]
     node2 = contact.nodes[1]
@@ -308,7 +311,7 @@ def main() -> None:
         fixed = plan.fixed
         for contact in fixed:
             print("Deactivating fixed contact %s" % contact)
-            set_link(contact, command="del")
+            set_link(contact, nodes, command="del")
         for c, d in container_devs:
             print(f"Removing tc netem for {c} on device {d}")
             set_on_interface(c, d, command="del", loss=0.0)
@@ -325,7 +328,7 @@ def main() -> None:
     fixed = plan.fixed
     for contact in fixed:
         print("Activating fixed contact %s" % contact)
-        set_link(contact, command="add")
+        set_link(contact, nodes, command="add")
 
     cur_time = 0
 
@@ -410,7 +413,7 @@ def main() -> None:
         cur_time = next_event
         for contact, state in plan.need_activation(cur_time):
             print("[ %d ] Activating %s" % (cur_time, contact))
-            set_link(contact)
+            set_link(contact, nodes)
             l = sorted([contact.nodes[0], contact.nodes[1]])
             l.append(".")
             static_link = (l[0], l[1], "-")
@@ -422,7 +425,7 @@ def main() -> None:
 
         for contact, state in plan.need_deactivation(cur_time):
             print("[ %d ] Deactivating %s" % (cur_time, contact))
-            set_link(contact, deactivate=True)
+            set_link(contact, nodes, deactivate=True)
             l = sorted([contact.nodes[0], contact.nodes[1]])
             l.append(".")
             try:

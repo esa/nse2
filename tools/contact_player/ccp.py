@@ -65,11 +65,11 @@ class CoreContact(object):
 
         src = fields[start_field]
         if src in mapping:
-            src = mapping[fields[2]]
+            src = mapping[int(src)]
 
         dst = fields[start_field + 1]
         if dst in mapping:
-            dst = mapping[fields[3]]
+            dst = mapping[int(src)]
 
         nodes = (src, dst)
         bw = fields[start_field + 2]
@@ -201,7 +201,7 @@ class CoreContactPlan(object):
                 return True
         return False
 
-    def all_contacts(self) -> List[Tuple[int, int]]:
+    def all_contacts(self) -> list[tuple[str, str]]:
         all = [(c.nodes[0], c.nodes[1]) for c in self.contacts]
         # remove duplicates
         return list(set(all))

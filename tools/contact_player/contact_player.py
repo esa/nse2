@@ -24,12 +24,17 @@ def load_scenario(path):
         if "x-description" in config:
             print(f"Description: {config['x-description']}")
 
-        services = config["services"]
+        services: dict[str, dict[str, list[str]]] = config["services"]
         for name, item in services.items():
             env_vars: list[str] = item["environment"]
             node_id = next(var for var in env_vars if var.startswith("NODE_ID"))
             node_eID = f"ipn:{node_id.split('=')[1]}.0"
-            new_node = {"eid": node_eID, "name": name, "networks": {}, "IPs": {}}
+            new_node: dict[str, str] = {
+                "eid": node_eID,
+                "name": name,
+                "networks": {},
+                "IPs": {},
+            }
 
             for net_name, value in item["networks"].items():
                 new_node["networks"][net_name] = True
@@ -60,7 +65,7 @@ scenario = load_scenario(args.scenario)
 netmap = args.map_network
 
 mapping = {}
-nodes = {}
+nodes: dict[str, dict[str, dict[str, str]]] = {}
 links = []
 
 
@@ -98,14 +103,21 @@ def set_link(contact: CoreContact, deactivate=False, command="change"):
         loss = 100.0
 
     if node2.startswith("dev:"):
-        net_dev = node2.split(":")[1] + "_0"
+        network = node2.split(":")[1]
+        net_dev = network + "_0"
+        for node, interfaces in nodes.items():
+            if network in interfaces and node != node1:
+                interfaces[network]["dev"]
+                node2 = node
+        link = find_common_subnet_between_nodes(node1, node2, nodes)
     else:
         link = find_common_subnet_between_nodes(node1, node2, nodes)
-
-        if link is None:
-            print("WARNING: Link not found for %s, %s" % (node1, node2))
-            return
         net_dev = get_dev_for_subnet(node1, link, nodes)
+
+    if link is None:
+        print("WARNING: Link not found for %s, %s" % (node1, node2))
+        return
+
     set_on_interface(
         node1,
         net_dev,
@@ -121,7 +133,7 @@ def set_link(contact: CoreContact, deactivate=False, command="change"):
         set_on_interface(
             node2,
             get_dev_for_subnet(node2, link, nodes),
-            command="change",
+            command=command,
             loss=loss,
             delay=contact.delay,
             jitter=contact.jitter,
@@ -208,18 +220,28 @@ print(links)
 plan = CoreContactPlan.from_file(args.ccp, mapping=mapping)
 
 # get list of unique nodes from all contacts in plan
-container_devs = []
+container_devs: list[tuple[str, str]] = []
 
-for contact in plan.all_contacts():
-    if contact[1].startswith("dev:"):
-        container_devs.append((contact[0], contact[1].split(":")[1] + "_0"))
+for contact in plan.contacts:
+    node1 = contact.nodes[0]
+    node2 = contact.nodes[1]
+
+    if node2.startswith("dev"):
+        network = node2.split(":")[1]
+        container_devs.append((node1, network + "_0"))
+        if contact.symmetric:
+            for node, interfaces in nodes.items():
+                if network in interfaces and node != node1:
+                    node2 = node
+                    container_devs.append(
+                        (node2, get_dev_for_subnet(node2, network, nodes))
+                    )
         continue
-
-    subnet = find_common_subnet_between_nodes(contact[0], contact[1], nodes)
+    subnet = find_common_subnet_between_nodes(node1, node2, nodes)
     if subnet is None:
         print("Error: No common subnet found")
         continue
-    for node in contact:
+    for node in contact.nodes:
         node_dev = get_dev_for_subnet(node, subnet, nodes)
         container_devs.append((node, node_dev))
 

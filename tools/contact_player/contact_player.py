@@ -132,7 +132,7 @@ def set_link(contact: CoreContact, deactivate=False, command="change"):
     if contact.symmetric:
         set_on_interface(
             node2,
-            get_dev_for_subnet(node2, link, nodes),
+            net_dev,
             command=command,
             loss=loss,
             delay=contact.delay,

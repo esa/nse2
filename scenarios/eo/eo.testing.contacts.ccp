@@ -2,7 +2,8 @@
 # Defines scheduled contacts and fixed links between nodes.
 #
 # Directives:
-#   s loop <n> : loop behaviour — 1 to repeat indefinitely, 0 (or omit) for no loop
+#   s loop <n>        : loop behaviour — 1 to repeat indefinitely, 0 (or omit) for no loop
+#   a <contact|fixed> : add a fixed link or a fluctuating contact with properties described below 
 #
 # Columns:
 #   type      : 'a contact' for scheduled links, 'a fixed' for fixed links
@@ -26,7 +27,7 @@ a fixed   mcc  gs1         10mbit  0.0    300     0        =
 
 # define both directions explicitly, for mcc and gs2
 a fixed   mcc  gs2         10mbit  0.0    300     0
-a fixed   gs2  mscc        10mbit  0.0    300     0
+a fixed   gs2  mcc         10mbit  0.0    300     0
 
 # instead of node names, specific interfaces can also be used
 a fixed   pcc  dev:gs1_pcc 10mbit  0.0    300     0

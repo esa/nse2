@@ -38,7 +38,7 @@ class CoreContact(object):
         )
 
     @classmethod
-    def from_string(cls, line: str, mapping: Dict[int, str] = {}) -> "CoreContact":
+    def from_string(cls, line: str, mapping: dict[str, str] = {}) -> "CoreContact":
         line = line.strip()
         fixed_link = False
         if line.startswith("a contact"):
@@ -65,11 +65,11 @@ class CoreContact(object):
 
         src = fields[start_field]
         if src in mapping:
-            src = mapping[int(src)]
+            src = mapping[src]
 
         dst = fields[start_field + 1]
         if dst in mapping:
-            dst = mapping[int(src)]
+            dst = mapping[dst]
 
         nodes = (src, dst)
         bw = fields[start_field + 2]

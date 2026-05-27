@@ -21,6 +21,7 @@ class CoreContact(object):
         loss: float,
         delay: float,
         jitter: float,
+        symmetric: bool = False,
     ) -> None:
         self.timespan = timespan
         self.nodes = nodes
@@ -28,15 +29,16 @@ class CoreContact(object):
         self.loss = loss
         self.delay = delay
         self.jitter = jitter
+        self.symmetric = symmetric
 
     def __str__(self) -> str:
         return (
-            "CoreContact(timespan=%r, nodes=%r, bw=%s, loss=%f, delay=%f, jitter=%f)"
-            % (self.timespan, self.nodes, self.bw, self.loss, self.delay, self.jitter)
+            f"CoreContact(timespan={self.timespan}, nodes={self.nodes}, bw={self.bw}, loss={self.loss}, "
+            + f"delay={self.delay}, jitter={self.jitter}, symmetric={self.symmetric})"
         )
 
     @classmethod
-    def from_string(cls, line: str, mapping: Dict[int, str] = {}) -> "CoreContact":
+    def from_string(cls, line: str, mapping: dict[str, str] = {}) -> "CoreContact":
         line = line.strip()
         fixed_link = False
         if line.startswith("a contact"):
@@ -49,8 +51,10 @@ class CoreContact(object):
 
         fields = line.split()
         print(fields, len(fields))
-        if (len(fields) != 8 and not fixed_link) or (len(fields) != 6 and fixed_link):
-            raise ValueError("Invalid CoreContact line: %s" % line)
+        if not fixed_link and not 8 <= len(fields) <= 9:
+            raise ValueError(f"Invalid Contact line with content: `{line}`")
+        if fixed_link and not 6 <= len(fields) <= 7:
+            raise ValueError(f"Invalid Fixed Link line with content: `{line}`")
 
         if fixed_link:
             timespan = (0, 0)
@@ -61,18 +65,22 @@ class CoreContact(object):
 
         src = fields[start_field]
         if src in mapping:
-            src = mapping[fields[2]]
+            src = mapping[src]
 
         dst = fields[start_field + 1]
         if dst in mapping:
-            dst = mapping[fields[3]]
+            dst = mapping[dst]
 
         nodes = (src, dst)
         bw = fields[start_field + 2]
         loss = float(fields[start_field + 3])
         delay = float(fields[start_field + 4])
         jitter = float(fields[start_field + 5])
-        return cls(timespan, nodes, bw, loss, delay, jitter)
+        try:
+            symmetric = True if fields[start_field + 6] == "=" else False
+        except IndexError:
+            symmetric = False
+        return cls(timespan, nodes, bw, loss, delay, jitter, symmetric)
 
 
 class CoreContactPlan(object):
@@ -193,7 +201,7 @@ class CoreContactPlan(object):
                 return True
         return False
 
-    def all_contacts(self) -> List[Tuple[int, int]]:
+    def all_contacts(self) -> list[tuple[str, str]]:
         all = [(c.nodes[0], c.nodes[1]) for c in self.contacts]
         # remove duplicates
         return list(set(all))

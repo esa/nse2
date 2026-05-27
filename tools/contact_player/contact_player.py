@@ -24,12 +24,17 @@ def load_scenario(path):
         if "x-description" in config:
             print(f"Description: {config['x-description']}")
 
-        services = config["services"]
+        services: dict[str, dict[str, list[str]]] = config["services"]
         for name, item in services.items():
             env_vars: list[str] = item["environment"]
             node_id = next(var for var in env_vars if var.startswith("NODE_ID"))
             node_eID = f"ipn:{node_id.split('=')[1]}.0"
-            new_node = {"eid": node_eID, "name": name, "networks": {}, "IPs": {}}
+            new_node: dict[str, str] = {
+                "eid": node_eID,
+                "name": name,
+                "networks": {},
+                "IPs": {},
+            }
 
             for net_name, value in item["networks"].items():
                 new_node["networks"][net_name] = True
@@ -48,9 +53,6 @@ def load_scenario(path):
 parser = argparse.ArgumentParser()
 parser.add_argument("-l", "--loop", metavar="LOOP", type=bool, help="Override looping")
 parser.add_argument(
-    "-s", "--symmetric", action="store_true", help="Treat all contacts as symmetric"
-)
-parser.add_argument(
     "-m", "--map-network", help="Map network links", action="store_true"
 )
 parser.add_argument("scenario", help="scenario file to load")
@@ -63,7 +65,7 @@ scenario = load_scenario(args.scenario)
 netmap = args.map_network
 
 mapping = {}
-nodes = {}
+nodes: dict[str, dict[str, dict[str, str]]] = {}
 links = []
 
 
@@ -81,53 +83,102 @@ for k, v in scenario.items():
     nodes[v.get("name")] = v["IPs"]
 
 
-def find_common_subnet_between_nodes(node1: str, node2: str, nodes: dict) -> str:
+def find_common_subnet_between_nodes(
+    node1: str, node2: str, nodes: dict[str, dict[str, dict[str, str]]]
+) -> str | None:
     for k in nodes[node1].keys():
         if k in nodes[node2]:
             return k
     return None
 
 
-def get_dev_for_subnet(node: str, subnet: str, nodes: dict) -> str:
+def get_dev_for_subnet(
+    node: str, subnet: str, nodes: dict[str, dict[str, dict[str, str]]]
+) -> str:
     return nodes[node][subnet]["dev"]
 
 
-def set_link(contact: CoreContact, deactivate=False, command="change", symmetric=False):
+def get_network_for_interface(
+    node: str, interface: str, nodes: dict[str, dict[str, dict[str, str]]]
+) -> str | None:
+    for network, net_conf in nodes[node].items():
+        if net_conf["dev"] == interface:
+            return network
+    print(
+        f"WARNING: could not find a network for interface {interface} on node {node}!"
+    )
+    return None
+
+
+def contact_to_node_iface(
+    contact: CoreContact, nodes: dict[str, dict[str, dict[str, str]]]
+) -> list[tuple[str, str]]:
+    """
+    Resolve a contact into the list of (node, interface) tuples, taking (a)symmetry of the contact into account.
+    """
+
     node1 = contact.nodes[0]
     node2 = contact.nodes[1]
 
+    node_iface_tuples: list[tuple[str, str]] = []
+
+    if node2.startswith("dev:"):
+        node1_iface = node2.split(":")[1] + "_0"
+
+        node_iface_tuples.append((node1, node1_iface))
+
+        if contact.symmetric:
+            network = get_network_for_interface(node1, node1_iface, nodes)
+            if network is None:
+                return node_iface_tuples
+
+            node2_iface: str | None = None
+            for candidate_node, candidate_networks in nodes.items():
+                if candidate_node == node1:
+                    continue
+
+                if network in candidate_networks:
+                    node2_iface = candidate_networks[network]["dev"]
+                    node2 = candidate_node
+            if node2_iface is None:
+                print(
+                    f"WARNING: Could not apply symmetric rule for {node1} <-> {node2}"
+                )
+                return node_iface_tuples
+            node_iface_tuples.append((node2, node2_iface))
+
+        return node_iface_tuples
+
+    network = find_common_subnet_between_nodes(node1, node2, nodes)
+    if network is None:
+        print(f"WARNING: No common network between {node1} and {node2}")
+        return []
+    node1_iface = get_dev_for_subnet(node1, network, nodes)
+    node_iface_tuples.append((node1, node1_iface))
+
+    if contact.symmetric:
+        node2_iface = get_dev_for_subnet(node2, network, nodes)
+        node_iface_tuples.append((node2, node2_iface))
+
+    return node_iface_tuples
+
+
+def set_link(contact: CoreContact, deactivate=False, command="change"):
     loss = contact.loss
     if deactivate:
         loss = 100.0
 
-    if node2.startswith("dev:"):
-        net_dev = node2.split(":")[1] + "_0"
-    else:
-        link = find_common_subnet_between_nodes(node1, node2, nodes)
+    node_iface_tuples = contact_to_node_iface(contact, nodes)
 
-        if link is None:
-            print("WARNING: Link not found for %s, %s" % (node1, node2))
-            return
-        net_dev = get_dev_for_subnet(node1, link, nodes)
-    set_on_interface(
-        node1,
-        net_dev,
-        command=command,
-        loss=loss,
-        delay=contact.delay,
-        jitter=contact.jitter,
-        bandwidth=contact.bw,
-    )
-
-    # set links symmetrically, so also on the second node
-    if symmetric:
+    for node, iface in node_iface_tuples:
         set_on_interface(
-            node2,
-            get_dev_for_subnet(node2, link, nodes),
-            command="change",
+            node,
+            iface,
+            command=command,
             loss=loss,
             delay=contact.delay,
             jitter=contact.jitter,
+            bandwidth=contact.bw,
         )
 
 
@@ -211,20 +262,11 @@ print(links)
 plan = CoreContactPlan.from_file(args.ccp, mapping=mapping)
 
 # get list of unique nodes from all contacts in plan
-container_devs = []
+container_devs: list[tuple[str, str]] = []
 
-for contact in plan.all_contacts():
-    if contact[1].startswith("dev:"):
-        container_devs.append((contact[0], contact[1].split(":")[1] + "_0"))
-        continue
-
-    subnet = find_common_subnet_between_nodes(contact[0], contact[1], nodes)
-    if subnet is None:
-        print("Error: No common subnet found")
-        continue
-    for node in contact:
-        node_dev = get_dev_for_subnet(node, subnet, nodes)
-        container_devs.append((node, node_dev))
+for contact in plan.contacts:
+    node_iface_tuples = contact_to_node_iface(contact, nodes)
+    container_devs += node_iface_tuples
 
 # remove duplicates in container_devs
 container_devs = list(set(container_devs))
@@ -375,7 +417,7 @@ while True:
     cur_time = next_event
     for contact, state in plan.need_activation(cur_time):
         print("[ %d ] Activating %s" % (cur_time, contact))
-        set_link(contact, symmetric=args.symmetric)
+        set_link(contact)
         l = sorted([contact.nodes[0], contact.nodes[1]])
         l.append(".")
         static_link = (l[0], l[1], "-")
@@ -387,7 +429,7 @@ while True:
 
     for contact, state in plan.need_deactivation(cur_time):
         print("[ %d ] Deactivating %s" % (cur_time, contact))
-        set_link(contact, deactivate=True, symmetric=args.symmetric)
+        set_link(contact, deactivate=True)
         l = sorted([contact.nodes[0], contact.nodes[1]])
         l.append(".")
         try:

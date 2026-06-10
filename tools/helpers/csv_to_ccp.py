@@ -202,6 +202,12 @@ def main() -> None:
         default="",
         help="Remove this prefix from all node names (e.g. --strip-prefix eo)",
     )
+    parser.add_argument(
+        "--speedup",
+        type=float,
+        default=1.0,
+        help="Divide contact timestamps by this factor (e.g. --speedup 100 for 100x faster)",
+    )
 
     args = parser.parse_args()
 
@@ -215,6 +221,9 @@ def main() -> None:
                 dst = strip_prefix(row[1], args.strip_prefix)
                 ts_start = float(row[2])
                 ts_end = float(row[3])
+                if args.speedup != 1.0 and ts_end != -1:
+                    ts_start = round(ts_start / args.speedup)
+                    ts_end = round(ts_end / args.speedup)
                 bw_bps = int(row[4])
                 delay_sec = float(row[5])
                 label = row[6] if len(row) == 7 else ""

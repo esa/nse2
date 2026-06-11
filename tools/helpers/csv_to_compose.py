@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import hashlib
 import json
 import os
@@ -126,6 +127,7 @@ def graph_to_compose(
     build: str | None = None,
     node_volumes: str | None = None,
     compose_volume: bool = False,
+    header: str = "",
     output: str = "-",
 ) -> None:
     """Write a docker-compose.yml from a topology graph."""
@@ -192,6 +194,8 @@ def graph_to_compose(
         }
 
     with open(output, "w") if output != "-" else nullcontext(sys.stdout) as out:
+        if header:
+            print(header, file=out)
         print(yaml.dump(compose, default_flow_style=False, sort_keys=False), file=out)
 
 
@@ -237,6 +241,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    date_str = datetime.date.today().isoformat()
+    cmd_str = f"{os.path.basename(sys.argv[0])} {' '.join(sys.argv[1:])}"
+    header = f"# Generated: {date_str}\n# Command: {cmd_str}\n"
+
     mapping: dict[str, Any] = {}
     if args.mapping is not None:
         with open(args.mapping) as f:
@@ -259,6 +267,7 @@ def main() -> None:
         build=args.build,
         node_volumes=args.node_volumes,
         compose_volume=args.mount_compose,
+        header=header,
         output=args.output,
     )
 

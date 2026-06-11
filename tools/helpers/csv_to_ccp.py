@@ -2,7 +2,9 @@
 
 import argparse
 import csv
+import datetime
 import hashlib
+import os
 import sys
 from collections import defaultdict
 from contextlib import nullcontext
@@ -172,6 +174,7 @@ def format_and_output(rows: list[Contact], out: TextIO) -> None:
         (False, False, True, True, True, True, True),
     ):
         print(line, file=out)
+    print(file=out)
 
     for line in _format_block(
         "contact",
@@ -211,6 +214,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    date_str = datetime.date.today().isoformat()
+    cmd_str = f"{os.path.basename(sys.argv[0])} {' '.join(sys.argv[1:])}"
+
     rows: list[Contact] = []
     with open(args.csvfile) as f:
         f.readline()
@@ -241,6 +247,9 @@ def main() -> None:
     with (
         open(args.output, "w") if args.output != "-" else nullcontext(sys.stdout)
     ) as out:
+        print(f"# Generated: {date_str}", file=out)
+        print(f"# Command: {cmd_str}", file=out)
+        print(file=out)
         print(HEADER.rstrip(), file=out)
         print(file=out)
         print("s loop 1", file=out)

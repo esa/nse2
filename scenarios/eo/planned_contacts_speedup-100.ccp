@@ -1,0 +1,316 @@
+# Generated: 2026-07-15
+# Command: csv_to_ccp.py --strip-prefix eo --speedup 100 --output planned_contacts_speedup-100.ccp planned_contacts.csv
+
+# Contact Plan
+# Defines scheduled contacts and fixed links between nodes.
+#
+# Directives:
+#   s loop <n>        : loop behaviour — 1 to repeat indefinitely, 0 (or omit) for no loop
+#   a <contact|fixed> : add a fixed link or a fluctuating contact with properties described below 
+#
+# Columns:
+#   type      : 'a contact' for scheduled links, 'a fixed' for fixed links
+#   start     : contact start time relative to scenario start (seconds, +offset)
+#   end       : contact end time relative to scenario start (seconds, +offset)
+#   src       : source node (node ID | node name)
+#   dst       : destination node (node ID | node name | `dev:<interfacename>`)
+#   bw        : bandwidth (e.g. 30mbit)
+#   loss      : packet loss percentage (e.g. 0.0)
+#   delay     : one-way propagation delay (ms)
+#   jitter    : delay jitter (ms)
+#   symmetric : '=' to apply the link in both directions, omit for one-way
+
+s loop 1
+
+# <fixed> <src> <dst>    [bw] [loss] [delay] [jitter] [=]
+a fixed   gs1   mcc   100mbit    0.0     150      0.0   =
+a fixed   gs1   pcc   100mbit    0.0     150      0.0   =
+a fixed   gs2   mcc   100mbit    0.0     150      0.0   =
+a fixed   gs2   pcc     1gbit    0.0      10      0.0   =
+a fixed   mcc   pcc   100mbit    0.0     150      0.0   =
+
+# <contact> <start>  <end> <src> <dst>   [bw] [loss] [delay] [jitter] [=]
+a contact       +13    +17 gs1   sat   64kbit    0.0      57      0.0    
+a contact       +13    +17 sat   gs1    8mbit    0.0      57      0.0    
+a contact       +97   +101 sat   gs2    1gbit    0.0      57      0.0    
+a contact      +246   +251 gs1   sat   64kbit    0.0      57      0.0    
+a contact      +246   +251 sat   gs1    8mbit    0.0      57      0.0    
+a contact      +476   +481 gs1   sat   64kbit    0.0      57      0.0    
+a contact      +476   +481 sat   gs1    8mbit    0.0      57      0.0    
+a contact      +510   +513 sat   gs2    1gbit    0.0      57      0.0    
+a contact      +710   +714 gs1   sat   64kbit    0.0      57      0.0    
+a contact      +710   +714 sat   gs1    8mbit    0.0      57      0.0    
+a contact      +946   +951 gs1   sat   64kbit    0.0      57      0.0    
+a contact      +946   +951 sat   gs1    8mbit    0.0      57      0.0    
+a contact      +971   +975 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +1178  +1182 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +1178  +1182 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +1384  +1388 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +1408  +1413 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +1408  +1413 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +1644  +1648 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +1644  +1648 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +1845  +1850 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +1878  +1884 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +1878  +1884 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +2110  +2114 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +2110  +2114 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +2258  +2263 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +2341  +2346 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +2341  +2346 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +2577  +2581 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +2577  +2581 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +2719  +2724 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +2811  +2816 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +2811  +2816 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +3041  +3046 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +3041  +3046 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +3132  +3137 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +3274  +3279 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +3274  +3279 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +3510  +3515 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +3510  +3515 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +3536  +3540 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +3743  +3747 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +3743  +3747 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +3973  +3978 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +3973  +3978 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +4007  +4012 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +4208  +4212 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +4208  +4212 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +4410  +4414 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +4443  +4448 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +4443  +4448 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +4675  +4679 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +4675  +4679 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +4823  +4827 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +4905  +4911 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +4905  +4911 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +5141  +5145 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +5141  +5145 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +5284  +5288 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +5375  +5380 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +5375  +5380 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +5606  +5610 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +5606  +5610 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +5697  +5701 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +5838  +5843 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +5838  +5843 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +6075  +6079 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +6075  +6079 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +6158  +6163 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +6308  +6312 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +6308  +6312 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +6538  +6543 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +6538  +6543 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +6571  +6576 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +6772  +6776 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +6772  +6776 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +6975  +6979 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +7007  +7013 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +7007  +7013 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +7240  +7243 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +7240  +7243 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +7445  +7450 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +7470  +7475 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +7470  +7475 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +7706  +7710 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +7706  +7710 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +7849  +7853 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +7940  +7945 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +7940  +7945 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +8171  +8175 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +8171  +8175 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +8320  +8325 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +8403  +8408 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +8403  +8408 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +8639  +8643 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +8639  +8643 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +8723  +8727 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +8872  +8877 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +8872  +8877 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +9103  +9107 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +9103  +9107 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +9136  +9140 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +9336  +9341 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +9336  +9341 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +9572  +9577 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +9572  +9577 sat   gs1    8mbit    0.0      57      0.0    
+a contact     +9597  +9601 sat   gs2    1gbit    0.0      57      0.0    
+a contact     +9804  +9808 gs1   sat   64kbit    0.0      57      0.0    
+a contact     +9804  +9808 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +10010 +10014 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +10034 +10040 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +10034 +10040 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +10270 +10274 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +10270 +10274 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +10471 +10476 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +10504 +10510 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +10504 +10510 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +10736 +10740 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +10736 +10740 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +10884 +10889 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +10967 +10972 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +10967 +10972 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +11203 +11208 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +11203 +11208 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +11288 +11292 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +11437 +11442 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +11437 +11442 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +11667 +11672 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +11667 +11672 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +11759 +11763 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +11900 +11905 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +11900 +11905 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +12136 +12141 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +12136 +12141 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +12162 +12166 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +12369 +12373 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +12369 +12373 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +12575 +12578 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +12599 +12604 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +12599 +12604 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +12834 +12838 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +12834 +12838 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +13036 +13040 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +13069 +13074 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +13069 +13074 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +13301 +13305 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +13301 +13305 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +13449 +13453 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +13531 +13537 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +13531 +13537 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +13768 +13772 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +13768 +13772 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +13910 +13915 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +14001 +14007 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +14001 +14007 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +14232 +14237 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +14232 +14237 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +14323 +14328 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +14465 +14470 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +14465 +14470 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +14701 +14706 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +14701 +14706 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +14784 +14789 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +14934 +14938 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +14934 +14938 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +15164 +15169 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +15164 +15169 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +15197 +15202 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +15398 +15403 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +15398 +15403 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +15601 +15605 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +15633 +15639 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +15633 +15639 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +15866 +15869 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +15866 +15869 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +16072 +16077 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +16096 +16101 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +16096 +16101 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +16332 +16336 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +16332 +16336 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +16475 +16479 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +16566 +16571 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +16566 +16571 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +16797 +16801 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +16797 +16801 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +16888 +16892 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +17029 +17034 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +17029 +17034 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +17265 +17270 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +17265 +17270 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +17349 +17353 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +17498 +17503 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +17498 +17503 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +17729 +17733 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +17729 +17733 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +17762 +17766 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +17963 +17967 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +17963 +17967 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +18198 +18203 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +18198 +18203 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +18223 +18228 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +18430 +18434 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +18430 +18434 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +18636 +18641 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +18661 +18666 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +18661 +18666 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +18896 +18900 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +18896 +18900 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +19040 +19044 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +19131 +19136 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +19131 +19136 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +19362 +19366 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +19362 +19366 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +19511 +19515 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +19593 +19598 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +19593 +19598 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +19830 +19834 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +19830 +19834 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +19914 +19918 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +20063 +20068 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +20063 +20068 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +20293 +20298 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +20293 +20298 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +20327 +20330 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +20527 +20531 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +20527 +20531 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +20763 +20768 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +20763 +20768 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +20788 +20792 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +20995 +20999 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +20995 +20999 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +21201 +21205 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +21225 +21230 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +21225 +21230 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +21461 +21464 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +21461 +21464 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +21662 +21667 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +21695 +21701 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +21695 +21701 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +21927 +21931 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +21927 +21931 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +22075 +22079 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +22158 +22163 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +22158 +22163 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +22394 +22398 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +22394 +22398 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +22536 +22541 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +22628 +22633 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +22628 +22633 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +22858 +22863 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +22858 +22863 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +22949 +22954 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +23091 +23096 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +23091 +23096 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +23327 +23332 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +23327 +23332 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +23353 +23357 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +23560 +23564 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +23560 +23564 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +23790 +23795 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +23790 +23795 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +23824 +23829 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +24025 +24029 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +24025 +24029 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +24227 +24231 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +24260 +24265 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +24260 +24265 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +24492 +24496 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +24492 +24496 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +24640 +24643 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +24722 +24728 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +24722 +24728 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +24958 +24962 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +24958 +24962 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +25101 +25105 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +25192 +25197 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +25192 +25197 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +25423 +25427 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +25423 +25427 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +25514 +25518 sat   gs2    1gbit    0.0      57      0.0    
+a contact    +25655 +25660 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +25655 +25660 sat   gs1    8mbit    0.0      57      0.0    
+a contact    +25891 +25896 gs1   sat   64kbit    0.0      57      0.0    
+a contact    +25891 +25896 sat   gs1    8mbit    0.0      57      0.0    

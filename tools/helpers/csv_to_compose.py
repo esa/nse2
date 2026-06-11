@@ -154,7 +154,7 @@ def graph_to_compose(
             "container_name": node_name,
             "hostname": node_name,
             "cap_add": ["NET_ADMIN"],
-            "privileged": "true",
+            "privileged": True,
             "environment": [f"NODE_ID={data['id']}", f"TYPE={data['type']}"],
             "networks": {},
         }

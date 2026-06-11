@@ -145,24 +145,25 @@ def graph_to_compose(
         volumes: list[str] = []
         if compose_volume:
             volumes.append(f"./{base_name}:/docker-compose.yml:ro")
+        if node_volumes:
+            volumes.append(f"./{node_volumes}/{node_name}:/data")
+            os.makedirs(f"{node_volumes}/{node_name}", exist_ok=True)
         svc: dict[str, Any] = {
             "container_name": node_name,
             "hostname": node_name,
             "cap_add": ["NET_ADMIN"],
             "privileged": "true",
-            "volumes": volumes,
             "environment": [f"NODE_ID={data['id']}", f"TYPE={data['type']}"],
             "networks": {},
         }
+        if volumes:
+            svc["volumes"] = volumes
         if build:
             svc["build"] = build
         else:
             svc["image"] = image
         if entrypoint and not build:
             svc["entrypoint"] = entrypoint
-        if node_volumes:
-            svc["volumes"].append(f"./{node_volumes}/{node_name}:/data")
-            os.makedirs(f"{node_volumes}/{node_name}", exist_ok=True)
         compose["services"][node_name] = svc
 
     subnet_count = 0

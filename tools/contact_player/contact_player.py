@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 import time
+from itertools import combinations
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -189,7 +190,6 @@ def get_pure_node_links(links: list[tuple[str, str, str]]) -> set[tuple[str, str
 
         if l[0].startswith("dev:"):
             dev_str = l[0].split(":")[1]
-            other_node = l[1]
             components = dev_str.split("_")
             if len(components) >= 2:
                 if components[0] == l[1]:
@@ -202,7 +202,6 @@ def get_pure_node_links(links: list[tuple[str, str, str]]) -> set[tuple[str, str
                 )
         if l[1].startswith("dev:"):
             dev_str = l[1].split(":")[1]
-            other_node = l[0]
             components = dev_str.split("_")
             if len(components) >= 2:
                 if components[0] == l[0]:
@@ -261,7 +260,7 @@ def main() -> None:
 
     mapping = {}
     nodes: dict[str, Node] = {}
-    links = []
+    links: list[tuple[str, str, str]] = []
 
     for k, v in scenario.items():
         # extract node number from key
@@ -278,21 +277,11 @@ def main() -> None:
 
     # check all node combinations for common subnets/links
 
-    for n1 in nodes.keys():
-        for n2 in nodes.keys():
-            if n1 == n2:
-                continue
-            link = find_common_subnet_between_nodes(n1, n2, nodes)
-            if link is not None:
-                # sort n1 and n2 to avoid duplicates
-                l = sorted([n1, n2])
-                l.append("-")
-                links.append(l)
-    links = list(set([tuple(l) for l in links]))
-
-    # print(mapping)
-    # print(nodes)
-    # print(links)
+    for n1, n2 in combinations(nodes, 2):
+        if find_common_subnet_between_nodes(n1, n2, nodes) is None:
+            continue
+        a, b = sorted((n1, n2))
+        links.append((a, b, "-"))
 
     scenario_name = os.path.basename(args.scenario)
     scenario_name = os.path.splitext(scenario_name)[0]

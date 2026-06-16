@@ -8,28 +8,17 @@ import socket
 import sys
 import time
 from itertools import combinations
-from pathlib import Path
-from typing import Any, TypedDict, cast
+from os import PathLike
+from typing import Any, cast
 
 import yaml
 
 from tools.contact_player.ccp import ContactState, CoreContact, CoreContactPlan
+from tools.contact_player.scenario import NetworkInterface, Node, Service
 from tools.contact_player.tc_netem import run_in_container, set_on_interface
 
 
-class Service(TypedDict):
-    environment: list[str]
-    networks: dict[str, dict[str, str]]
-
-
-class Node(TypedDict):
-    eid: str
-    name: str
-    networks: dict[str, bool]
-    IPs: dict[str, str]
-
-
-def load_scenario(path: str | Path) -> dict[str, Node]:
+def load_scenario(path: str | PathLike[str]) -> dict[str, Node]:
     """
     Loads the docker compose scenario from the passed filepath.
     """
@@ -45,46 +34,50 @@ def load_scenario(path: str | Path) -> dict[str, Node]:
         for name, item in services.items():
             env_vars: list[str] = item["environment"]
             node_id = next(var for var in env_vars if var.startswith("NODE_ID"))
-            node_eID = f"ipn:{node_id.split('=')[1]}.0"
-            new_node: Node = {
-                "eid": node_eID,
-                "name": name,
-                "networks": {},
-                "IPs": {},
-            }
+            node_eid = f"ipn:{node_id.split('=')[1]}.0"
+            node = Node(name, node_id, node_eid)
 
-            for net_name, value in item["networks"].items():
-                new_node["networks"][net_name] = True
-                new_node["IPs"][net_name] = value["ipv4_address"]
+            for net_name, conf in item["networks"].items():
+                node.interfaces[net_name] = NetworkInterface(conf["ipv4_address"])
                 print(
-                    f"Node {node_eID} connected to network {net_name} with {value['ipv4_address']}"
+                    f"Node {node_eid} connected to network {net_name} with {conf['ipv4_address']}"
                 )
 
-            nodes[node_eID] = new_node
+            nodes[name] = node
 
     print(f"Created {len(nodes)} nodes.")
     return nodes
 
 
-def find_common_subnet_between_nodes(
-    node1: str, node2: str, nodes: dict[str, Node]
-) -> str | None:
-    for k in nodes[node1].keys():
-        if k in nodes[node2]:
-            return k
+def nodes_from_compose(path: str | PathLike[str]) -> dict[str, Node]:
+    """
+    Load nodes from compose file and find network interface configs
+    by running 'ip a' inside the containers.
+    """
+    nodes = load_scenario(path)
+    for node in nodes.values():
+        for net_name, iface in node.interfaces.items():
+            res = run_in_container(node.name, f"ip a | grep {iface.ip}")
+            if len(res) == 0:
+                print("Error: IP not found")
+                continue
+            res_dev = res.rsplit(" ", maxsplit=1)[1].strip()
+
+            node.interfaces[net_name].dev = res_dev
+    return nodes
+
+
+def find_common_subnet_between_nodes(node1: Node, node2: Node) -> str | None:
+    for net in node1.interfaces:
+        if net in node2.interfaces:
+            return net
     return None
 
 
-def get_dev_for_subnet(node: str, subnet: str, nodes: dict[str, Node]) -> str:
-    return nodes[node][subnet]["dev"]
-
-
-def get_network_for_interface(
-    node: str, interface: str, nodes: dict[str, Node]
-) -> str | None:
-    for network, net_conf in nodes[node].items():
-        if net_conf["dev"] == interface:
-            return network
+def get_network_for_interface(node: Node, interface: str) -> str | None:
+    for net_name, iface in node.interfaces.items():
+        if iface.dev == interface:
+            return net_name
     print(
         f"WARNING: could not find a network for interface {interface} on node {node}!"
     )
@@ -98,48 +91,52 @@ def contact_to_node_iface(
     Resolve a contact into the list of (node, interface) tuples, taking (a)symmetry of the contact into account.
     """
 
-    node1 = contact.nodes[0]
-    node2 = contact.nodes[1]
+    node1_name = contact.nodes[0]
+    node2_name = contact.nodes[1]
 
     node_iface_tuples: list[tuple[str, str]] = []
 
-    if node2.startswith("dev:"):
-        node1_iface = node2.split(":")[1] + "_0"
+    if node2_name.startswith("dev:"):
+        node1_iface = node2_name.split(":")[1] + "_0"
 
-        node_iface_tuples.append((node1, node1_iface))
+        node_iface_tuples.append((node1_name, node1_iface))
 
         if contact.symmetric:
-            network = get_network_for_interface(node1, node1_iface, nodes)
+            node1 = nodes[node1_name]
+            network = get_network_for_interface(node1, node1_iface)
             if network is None:
                 return node_iface_tuples
 
             node2_iface: str | None = None
-            for candidate_node, candidate_networks in nodes.items():
-                if candidate_node == node1:
+            for candidate_node in nodes.values():
+                if candidate_node.name == node1_name:
                     continue
 
-                if network in candidate_networks:
-                    node2_iface = candidate_networks[network]["dev"]
-                    node2 = candidate_node
+                if network in candidate_node.interfaces:
+                    node2_iface = candidate_node.interfaces[network].dev
+                    node2_name = candidate_node.name
             if node2_iface is None:
                 print(
-                    f"WARNING: Could not apply symmetric rule for {node1} <-> {node2}"
+                    f"WARNING: Could not apply symmetric rule for {node1_name} <-> {node2_name}"
                 )
                 return node_iface_tuples
-            node_iface_tuples.append((node2, node2_iface))
+            node_iface_tuples.append((node2_name, node2_iface))
 
         return node_iface_tuples
 
-    network = find_common_subnet_between_nodes(node1, node2, nodes)
+    node1 = nodes[node1_name]
+    node2 = nodes[node2_name]
+    network = find_common_subnet_between_nodes(node1, node2)
     if network is None:
-        print(f"WARNING: No common network between {node1} and {node2}")
+        print(f"WARNING: No common network between {node1_name} and {node2_name}")
         return []
-    node1_iface = get_dev_for_subnet(node1, network, nodes)
-    node_iface_tuples.append((node1, node1_iface))
+
+    node1_iface = node1.interfaces[network].dev
+    node_iface_tuples.append((node1_name, node1_iface))
 
     if contact.symmetric:
-        node2_iface = get_dev_for_subnet(node2, network, nodes)
-        node_iface_tuples.append((node2, node2_iface))
+        node2_iface = node2.interfaces[network].dev
+        node_iface_tuples.append((node2_name, node2_iface))
 
     return node_iface_tuples
 
@@ -255,33 +252,20 @@ def main() -> None:
     parser.add_argument("ccp", help="core contact plan to load")
     args = parser.parse_args()
 
-    scenario = load_scenario(args.scenario)
+    nodes = nodes_from_compose(args.scenario)
 
     netmap = args.map_network
 
-    mapping = {}
-    nodes: dict[str, Node] = {}
+    mapping: dict[str, str] = {}
     links: list[tuple[str, str, str]] = []
 
-    for k, v in scenario.items():
-        # extract node number from key
-        node_id = k.split(":")[1].split(".")[0]
-        mapping[node_id] = v.get("name")
-        for k, v2 in v["IPs"].items():
-            res = run_in_container(v.get("name"), f"ip a | grep {v2}")
-            if len(res) == 0:
-                print("Error: IP not found")
-                continue
-            net_if = res.rsplit(" ", maxsplit=1)[1].strip()
-            v["IPs"][k] = {"dev": net_if, "ip": v2}
-        nodes[v.get("name")] = v["IPs"]
+    for node in nodes.values():
+        mapping[node.id] = node.name
 
-    # check all node combinations for common subnets/links
-
-    for n1, n2 in combinations(nodes, 2):
-        if find_common_subnet_between_nodes(n1, n2, nodes) is None:
+    for n1, n2 in combinations(nodes.values(), 2):
+        if find_common_subnet_between_nodes(n1, n2) is None:
             continue
-        a, b = sorted((n1, n2))
+        a, b = sorted((n1.name, n2.name))
         links.append((a, b, "-"))
 
     scenario_name = os.path.basename(args.scenario)

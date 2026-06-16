@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Tuple, Optional
+from typing import override
 
 
 class ContactState(Enum):
@@ -15,22 +15,23 @@ class ContactState(Enum):
 class CoreContact(object):
     def __init__(
         self,
-        timespan: Tuple[int, int],
-        nodes: Tuple[str, str],
+        timespan: tuple[int, int],
+        nodes: tuple[str, str],
         bw: str,
         loss: float,
         delay: float,
         jitter: float,
         symmetric: bool = False,
     ) -> None:
-        self.timespan = timespan
-        self.nodes = nodes
-        self.bw = bw
-        self.loss = loss
-        self.delay = delay
-        self.jitter = jitter
-        self.symmetric = symmetric
+        self.timespan: tuple[int, int] = timespan
+        self.nodes: tuple[str, str] = nodes
+        self.bw: str = bw
+        self.loss: float = loss
+        self.delay: float = delay
+        self.jitter: float = jitter
+        self.symmetric: bool = symmetric
 
+    @override
     def __str__(self) -> str:
         return (
             f"CoreContact(timespan={self.timespan}, nodes={self.nodes}, bw={self.bw}, loss={self.loss}, "
@@ -38,7 +39,7 @@ class CoreContact(object):
         )
 
     @classmethod
-    def from_string(cls, line: str, mapping: dict[str, str] = {}) -> "CoreContact":
+    def from_string(cls, line: str, mapping: dict[str, str]) -> "CoreContact":
         line = line.strip()
         fixed_link = False
         if line.startswith("a contact"):
@@ -88,31 +89,29 @@ class CoreContactPlan(object):
 
     def __init__(
         self,
-        filename: str = None,
-        contacts: Dict[CoreContact, ContactState] = {},
-        fixed: List[CoreContact] = [],
-        mapping: Dict[int, str] = {},
+        filename: str | None = None,
+        contacts: dict[CoreContact, ContactState] = {},
+        fixed: list[CoreContact] = [],
+        mapping: dict[str, str] = {},
     ) -> None:
-        self.loop = False
-        self.contacts = contacts
-        self.fixed = fixed
+        self.loop: bool = False
+        self.contacts: dict[CoreContact, ContactState] = contacts
+        self.fixed: list[CoreContact] = fixed
         if filename:
             self.load(filename, mapping=mapping)
 
     @classmethod
-    def from_file(cls, filename, mapping: Dict[int, str] = {}) -> CoreContactPlan:
+    def from_file(cls, filename: str, mapping: dict[str, str] = {}) -> CoreContactPlan:
         plan = cls(filename, mapping=mapping)
         return plan
 
+    @override
     def __str__(self) -> str:
-        return "CoreContactPlan(loop=%r, #contacts=%d)" % (
-            self.loop,
-            len(self.contacts),
-        )
+        return f"CoreContactPlan(loop={self.loop}, #contacts={len(self.contacts)})"
 
-    def load(self, filename: str, mapping: Dict[int, str] = {}) -> None:
-        contacts = {}
-        fixed = []
+    def load(self, filename: str, mapping: dict[str, str] = {}) -> None:
+        contacts: dict[CoreContact, ContactState] = {}
+        fixed: list[CoreContact] = []
         with open(filename, "r") as f:
             for line in f:
                 line = line.strip()
@@ -136,9 +135,8 @@ class CoreContactPlan(object):
         self.contacts = contacts
         self.fixed = fixed
 
-    def at(self, time: int) -> List[Tuple[CoreContact, ContactState]]:
+    def at(self, time: int) -> list[tuple[CoreContact, ContactState]]:
         """Returns the list of contacts at the given time."""
-        orig = time
         if self.loop:
             time = time % self.get_max_time()
         return [
@@ -147,12 +145,12 @@ class CoreContactPlan(object):
             if c.timespan[0] <= time and c.timespan[1] >= time
         ]
 
-    def need_activation(self, time: int) -> List[Tuple[CoreContact, ContactState]]:
+    def need_activation(self, time: int) -> list[tuple[CoreContact, ContactState]]:
         """Returns the list of contacts at the given time that need to be activated."""
         all = self.at(time)
         return [(c, s) for (c, s) in all if s == ContactState.PRE]
 
-    def need_deactivation(self, time: int) -> List[Tuple[CoreContact, ContactState]]:
+    def need_deactivation(self, time: int) -> list[tuple[CoreContact, ContactState]]:
         """Returns the list of contacts at the given time that need to be deactivated."""
         return [
             (c, s)
@@ -160,7 +158,7 @@ class CoreContactPlan(object):
             if time >= c.timespan[1] and s == ContactState.LIVE
         ]
 
-    def next_activation(self, time: int) -> Optional[int]:
+    def next_activation(self, time: int) -> int | None:
         """Returns the next activation time."""
         activations = [
             c.timespan[0]
@@ -171,7 +169,7 @@ class CoreContactPlan(object):
             return None
         return min(activations)
 
-    def next_deactivation(self, time: int) -> Optional[int]:
+    def next_deactivation(self, time: int) -> int | None:
         """Returns the next deactivation time."""
         deactivations = [
             c.timespan[1]
@@ -191,13 +189,14 @@ class CoreContactPlan(object):
         """Returns the maximum time in the contact plan."""
         return max([c.timespan[1] for c in self.contacts])
 
-    def has_contact(self, simtime: float, node1: str, node2: str) -> bool:
+    # TODO: unused.. remove..?
+    def has_contact(self, simtime: int, node1: str, node2: str) -> bool:
         current_contacts = self.at(simtime)
         # print("[ %f ] has_contact: %d %d | %s" % (simtime, node1, node2, current_contacts[0]))
         for c in current_contacts:
-            if c.nodes[0] == node1 and c.nodes[1] == node2:
+            if c[0].nodes[0] == node1 and c[0].nodes[1] == node2:
                 return True
-            if c.nodes[0] == node2 and c.nodes[1] == node1:
+            if c[0].nodes[0] == node2 and c[0].nodes[1] == node1:
                 return True
         return False
 

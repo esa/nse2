@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import yaml
-from ccp import *
-from tc_netem import *
+
+from tools.contact_player.ccp import ContactState, CoreContact, CoreContactPlan
+from tools.contact_player.tc_netem import run_in_container, set_on_interface
 
 
 class Service(TypedDict):

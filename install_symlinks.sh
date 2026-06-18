@@ -25,4 +25,6 @@ for script in tools/helpers/*; do
     ln -sf $(pwd)/$script $TARGET/$(basename $script)
 done
 
+echo "export PYTHONPATH=\"$(pwd):\$PYTHONPATH\"" >> .venv/bin/activate
+
 echo "Done"

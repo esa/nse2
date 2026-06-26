@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import override
 
@@ -12,34 +13,31 @@ class ContactState(Enum):
     POST = 2
 
 
-class CoreContact(object):
-    def __init__(
-        self,
-        timespan: tuple[int, int],
-        nodes: tuple[str, str],
-        bw: str,
-        loss: float,
-        delay: float,
-        jitter: float,
-        symmetric: bool = False,
-    ) -> None:
-        self.timespan: tuple[int, int] = timespan
-        self.nodes: tuple[str, str] = nodes
-        self.bw: str = bw
-        self.loss: float = loss
-        self.delay: float = delay
-        self.jitter: float = jitter
-        self.symmetric: bool = symmetric
+@dataclass(frozen=True)
+class LinkProperties:
+    """Network properties applied to a contact link."""
 
-    @override
-    def __str__(self) -> str:
-        return (
-            f"CoreContact(timespan={self.timespan}, nodes={self.nodes}, bw={self.bw}, loss={self.loss}, "
-            + f"delay={self.delay}, jitter={self.jitter}, symmetric={self.symmetric})"
-        )
+    bandwidth: str
+    loss: float = 0.0
+    delay: float = 0.0
+    jitter: float = 0.0
+
+
+# raw CCP model and parsing
+@dataclass(frozen=True)
+class RawCcpContact:
+    """Unresolved contact entry parsed directly from a CCP file."""
+
+    src: str
+    dst: str
+    begin: int
+    end: int
+    props: LinkProperties
+    symmetric: bool = False
 
     @classmethod
-    def from_string(cls, line: str, mapping: dict[str, str]) -> "CoreContact":
+    def from_string(cls, line: str) -> "RawCcpContact":
+        """Parse one CCP contact or fixed-link line."""
         line = line.strip()
         fixed_link = False
         if line.startswith("a contact"):
@@ -51,89 +49,74 @@ class CoreContact(object):
             raise ValueError("Invalid CoreContact line: %s" % line)
 
         fields = line.split()
-        print(fields, len(fields))
         if not fixed_link and not 8 <= len(fields) <= 9:
             raise ValueError(f"Invalid Contact line with content: `{line}`")
         if fixed_link and not 6 <= len(fields) <= 7:
             raise ValueError(f"Invalid Fixed Link line with content: `{line}`")
 
         if fixed_link:
-            timespan = (0, 0)
+            begin = 0
+            end = -1
             start_field = 0
         else:
-            timespan = (int(fields[0]), int(fields[1]))
+            begin = int(fields[0])
+            end = int(fields[1])
             start_field = 2
 
         src = fields[start_field]
-        if src in mapping:
-            src = mapping[src]
-
         dst = fields[start_field + 1]
-        if dst in mapping:
-            dst = mapping[dst]
-
-        nodes = (src, dst)
         bw = fields[start_field + 2]
         loss = float(fields[start_field + 3])
         delay = float(fields[start_field + 4])
         jitter = float(fields[start_field + 5])
-        try:
-            symmetric = True if fields[start_field + 6] == "=" else False
-        except IndexError:
-            symmetric = False
-        return cls(timespan, nodes, bw, loss, delay, jitter, symmetric)
+        props = LinkProperties(bw, loss, delay, jitter)
+        symmetric = len(fields) > start_field + 6 and fields[start_field + 6] == "="
+
+        return cls(src, dst, begin, end, props, symmetric)
 
 
-class CoreContactPlan(object):
-    """A CoreContactPlan file."""
+@dataclass(frozen=True)
+class RawCcpContactPlan:
+    """Raw CCP file contents before node and interface resolution."""
 
-    def __init__(
-        self,
-        filename: str | None = None,
-        contacts: dict[CoreContact, ContactState] = {},
-        fixed: list[CoreContact] = [],
-        mapping: dict[str, str] = {},
-    ) -> None:
-        self.loop: bool = False
-        self.contacts: dict[CoreContact, ContactState] = contacts
-        self.fixed: list[CoreContact] = fixed
-        if filename:
-            self.load(filename, mapping=mapping)
+    contacts: list[RawCcpContact] = field(default_factory=list)
+    fixed_contacts: list[RawCcpContact] = field(default_factory=list)
+    loop: bool = False
 
     @classmethod
-    def from_file(cls, filename: str, mapping: dict[str, str] = {}) -> CoreContactPlan:
-        plan = cls(filename, mapping=mapping)
-        return plan
+    def from_file(cls, path: str | PathLike[str]) -> "RawCcpContactPlan":
+        """Parse a CCP file into unresolved contacts and fixed contacts."""
+        contacts: list[RawCcpContact] = []
+        fixed: list[RawCcpContact] = []
+        loop = False
 
-    @override
-    def __str__(self) -> str:
-        return f"CoreContactPlan(loop={self.loop}, #contacts={len(self.contacts)})"
-
-    def load(self, filename: str, mapping: dict[str, str] = {}) -> None:
-        contacts: dict[CoreContact, ContactState] = {}
-        fixed: list[CoreContact] = []
-        with open(filename, "r") as f:
-            for line in f:
+        with open(path, "r") as f:
+            for line_num, line in enumerate(f, start=1):
                 line = line.strip()
-                fields = line.split()
-                if len(fields) == 3 and fields[0] == "s":
-                    if fields[1] == "loop":
-                        if fields[2] == "1":
-                            self.loop = True
-                        else:
-                            self.loop = False
-                elif len(fields) > 4 and fields[0] == "a":
-                    if fields[1] == "contact":
-                        contact = CoreContact.from_string(line, mapping=mapping)
-                        print(contact)
-                        contacts[contact] = ContactState.PRE
-                    if fields[1] == "fixed":
-                        fixed_contact = CoreContact.from_string(line, mapping=mapping)
-                        print(fixed_contact)
-                        fixed.append(fixed_contact)
 
-        self.contacts = contacts
-        self.fixed = fixed
+                if not line or line.startswith("#"):
+                    continue
+
+                fields = line.split()
+
+                try:
+                    if fields[0] == "s" and fields[1] == "loop":
+                        loop = bool(int(fields[2]))
+                    elif fields[0] == "a":
+                        if fields[1] == "fixed":
+                            fixed.append(RawCcpContact.from_string(line))
+                        elif fields[1] == "contact":
+                            contacts.append(RawCcpContact.from_string(line))
+                        else:
+                            raise ValueError(
+                                f"Unknown record type '{fields[1]}'. Does not match 'fixed' or 'contact'"
+                            )
+                except (IndexError, ValueError) as e:
+                    raise ValueError(
+                        f"Failed to parse contact plan at line {line_num} '{line}': {e}"
+                    ) from e
+
+        return cls(contacts, fixed, loop)
 
     def at(self, time: int) -> list[tuple[CoreContact, ContactState]]:
         """Returns the list of contacts at the given time."""

@@ -7,17 +7,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
 from typing import Literal
-def load_scenario(path: str | PathLike[str]) -> dict[str, Node]:
-    """
-    Loads the docker compose scenario from the passed filepath.
-    """
-    print(f"Loading scenario from {path}.")
-    nodes: dict[str, Node] = {}
 
-    with open(path) as f:
-        config: dict[str, Any] = yaml.load(f, Loader=yaml.FullLoader)
-        if "x-description" in config:
-            print(f"Description: {config['x-description']}")
 from tools.contact_player.ccp import (
     Contact,
     ContactPlan,
@@ -26,6 +16,7 @@ from tools.contact_player.ccp import (
 from tools.contact_player.scenario import (
     NetworkName,
     Node,
+    load_scenario,
 )
 from tools.contact_player.tc_netem import set_on_interface
 
@@ -132,17 +123,6 @@ class ContactPlayer:
                 print(f"ERROR: {e}")
 
         for contact in self.plan.fixed_contacts:
-        services = cast(dict[str, Service], config["services"])
-        for name, item in services.items():
-            env_vars: list[str] = item["environment"]
-            node_id = next(var for var in env_vars if var.startswith("NODE_ID"))
-            node_eid = f"ipn:{node_id.split('=')[1]}.0"
-            node = Node(name, node_id, node_eid)
-
-            for net_name, conf in item["networks"].items():
-                node.interfaces[net_name] = NetworkInterface(conf["ipv4_address"])
-                print(
-                    f"Node {node_eid} connected to network {net_name} with {conf['ipv4_address']}"
             try:
                 set_on_interface(
                     contact.src.name,
@@ -152,13 +132,10 @@ class ContactPlayer:
             except RuntimeError as e:
                 print(f"ERROR: {e}")
 
-            nodes[name] = node
         if self.netmap_path is not None:
             with open(self.netmap_path, "w"):
                 pass
 
-    print(f"Created {len(nodes)} nodes.")
-    return nodes
         self.sock.close()
 
     def run(self, loop_override: bool = False) -> None:
@@ -180,24 +157,6 @@ class ContactPlayer:
                     print("No more events... exiting...")
                     break
                 print(f"[ {current_time} ] Next event(s) at {next_time}")
-
-def nodes_from_compose(path: str | PathLike[str]) -> dict[str, Node]:
-    """
-    Load nodes from compose file and find network interface configs
-    by running 'ip a' inside the containers.
-    """
-    nodes = load_scenario(path)
-    for node in nodes.values():
-        for net_name, iface in node.interfaces.items():
-            res = run_in_container(node.name, f"ip a | grep {iface.ip}")
-            if len(res) == 0:
-                print("Error: IP not found")
-                continue
-            res_dev = res.rsplit(" ", maxsplit=1)[1].strip()
-
-            node.interfaces[net_name].dev = res_dev
-    return nodes
-
 
                 self._sleep_until(next_time, current_time)
                 if self.stop:

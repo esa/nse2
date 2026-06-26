@@ -2,17 +2,30 @@ from dataclasses import dataclass, field
 from typing import TypeAlias, TypedDict, override
 
 
+NetworkName: TypeAlias = str
+"""Name of a Docker compose network."""
+
+
+class ComposeService(TypedDict):
+    """Relevant subset of a Docker compose service definition."""
+
+    environment: list[str]
+    networks: dict[str, dict[str, str]]
+
+
+# scenario model
 @dataclass
 class NetworkInterface:
+    """Network interface configuration for one node on one network."""
+
     ip: str
     dev: str = ""
 
 
-NetworkName: TypeAlias = str
-
-
 @dataclass(frozen=True)
 class Node:
+    """Scenario node resolved from a Docker compose service."""
+
     name: str
     id: str
     eid: str
@@ -22,6 +35,3 @@ class Node:
     )
 
 
-class Service(TypedDict):
-    environment: list[str]
-    networks: dict[str, dict[str, str]]

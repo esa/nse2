@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from os import PathLike
+from pathlib import Path
 from typing import override
 
+from tools.contact_player.scenario import NetworkName, Node
 
+
+# runtime state / basic value objects
 class ContactState(Enum):
-    """Contact state enumeration."""
+    """Contact state  of a dynamic contact."""
 
     PRE = 0
     LIVE = 1
@@ -118,72 +123,161 @@ class RawCcpContactPlan:
 
         return cls(contacts, fixed, loop)
 
-    def at(self, time: int) -> list[tuple[CoreContact, ContactState]]:
-        """Returns the list of contacts at the given time."""
-        if self.loop:
-            time = time % self.get_max_time()
-        return [
-            (c, s)
-            for c, s in self.contacts.items()
-            if c.timespan[0] <= time and c.timespan[1] >= time
-        ]
 
-    def need_activation(self, time: int) -> list[tuple[CoreContact, ContactState]]:
+# resolution helpers
+def _resolve_node(raw_node: str, nodes: dict[str, Node]) -> Node:
+    """Resolve a CCP node reference by name or node ID."""
+    if raw_node in nodes:
+        return nodes[raw_node]
+    for node in nodes.values():
+        if node.id == raw_node:
+            return node
+    raise ValueError(f"Could not resolve node '{raw_node}'")
+
+
+def _resolve_destination(
+    src: Node, dst_raw: str, nodes: dict[str, Node]
+) -> tuple[Node, NetworkName]:
+    """Resolve a destination reference to a peer node and shared network."""
+    if dst_raw.startswith("dev:"):
+        src_dev = dst_raw[4:] + "_0"
+        shared_network = next(
+            (net for (net, iface) in src.interfaces.items() if iface.dev == src_dev),
+            None,
+        )
+        if shared_network is None:
+            raise ValueError(
+                f"No interface '{src_dev}' found on node '{src.name}'.\n Full node config: {src}"
+            )
+
+        peers = [
+            n for n in nodes.values() if n is not src and shared_network in n.interfaces
+        ]
+        if not peers:
+            raise ValueError(f"No peer node found for network '{shared_network}'")
+        if len(peers) > 1:
+            raise ValueError(f"Ambiguous: multiple peers on network '{shared_network}'")
+
+        return peers[0], shared_network
+
+    dst = _resolve_node(dst_raw, nodes)
+    shared_networks = src.interfaces.keys() & dst.interfaces.keys()
+
+    if not shared_networks:
+        raise ValueError(f"No shared network between '{src.name}' and '{dst.name}'")
+    if len(shared_networks) > 1:
+        raise ValueError(
+            f"Ambiguous: multiple networks between '{src.name}' and '{dst.name}': {shared_networks}. Use dev: syntax to be explicit."
+        )
+    return dst, shared_networks.pop()
+
+
+def _resolve_link(
+    raw: RawCcpContact, nodes: dict[str, Node]
+) -> tuple[Node, Node, NetworkName]:
+    """Resolve a raw CCP contact into source node, destination node, and network."""
+    src = _resolve_node(raw.src, nodes)
+    dst, net = _resolve_destination(src, raw.dst, nodes)
+    return src, dst, net
+
+
+def _resolve_contacts(
+    raw_contacts: list[RawCcpContact],
+    nodes: dict[str, Node],
+) -> list[Contact]:
+    """Resolve raw CCP contacts and expand symmetric contacts into directed ones."""
+    contacts: list[Contact] = []
+
+    for raw in raw_contacts:
+        src, dst, net = _resolve_link(raw, nodes)
+        directions = [(src, dst), (dst, src)] if raw.symmetric else [(src, dst)]
+
+        for link_src, link_dst in directions:
+            contacts.append(
+                Contact(link_src, link_dst, net, raw.begin, raw.end, raw.props)
+            )
+    return contacts
+
+
+# resolved contact model and contact plan
+@dataclass(frozen=True)
+class Contact:
+    """Resolved unidirectional contact applied to one source interface."""
+
+    src: Node
+    dst: Node
+    network: NetworkName
+    begin: int
+    end: int
+    props: LinkProperties
+
+    def is_active(self, time: int) -> bool:
+        """Return whether the contact is active at the given simulation time."""
+        return self.end <= 0 or self.begin <= time <= self.end
+
+    @override
+    def __str__(self) -> str:
+        return f"Contact ({self.src.name} -> {self.dst.name} via {self.network}, {self.begin}-{self.end})"
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+@dataclass
+class ContactPlan:
+    """Resolved contact plan with runtime state for dynamic contacts."""
+
+    ccp_path: Path
+    contacts: dict[Contact, ContactState] = field(default_factory=dict)
+    fixed_contacts: list[Contact] = field(default_factory=list)
+    loop: bool = False
+
+    @classmethod
+    def from_ccp_file(
+        cls, path: str | PathLike[str], nodes: dict[str, Node]
+    ) -> "ContactPlan":
+        """Load and resolve a CCP file against the scenario nodes."""
+        raw_plan = RawCcpContactPlan.from_file(path)
+        contacts = _resolve_contacts(raw_plan.contacts, nodes)
+        fixed_contacts = _resolve_contacts(raw_plan.fixed_contacts, nodes)
+
+        return cls(
+            Path(path),
+            {c: ContactState.PRE for c in contacts},
+            fixed_contacts,
+            raw_plan.loop,
+        )
+
+    def contacts_to_activate(self, time: int) -> list[Contact]:
         """Returns the list of contacts at the given time that need to be activated."""
-        all = self.at(time)
-        return [(c, s) for (c, s) in all if s == ContactState.PRE]
+        contacts = [
+            c
+            for c, s in self.contacts.items()
+            if c.is_active(time) and s == ContactState.PRE
+        ]
+        return contacts
 
-    def need_deactivation(self, time: int) -> list[tuple[CoreContact, ContactState]]:
+    def contacts_to_deactivate(self, time: int) -> list[Contact]:
         """Returns the list of contacts at the given time that need to be deactivated."""
-        return [
-            (c, s)
+        contacts = [
+            c
             for c, s in self.contacts.items()
-            if time >= c.timespan[1] and s == ContactState.LIVE
+            if c.end <= time and s == ContactState.LIVE
         ]
+        return contacts
 
-    def next_activation(self, time: int) -> int | None:
-        """Returns the next activation time."""
-        activations = [
-            c.timespan[0]
-            for c, s in self.contacts.items()
-            if s == ContactState.PRE and c.timespan[0] >= time
-        ]
-        if len(activations) == 0:
-            return None
-        return min(activations)
-
-    def next_deactivation(self, time: int) -> int | None:
-        """Returns the next deactivation time."""
-        deactivations = [
-            c.timespan[1]
-            for c, s in self.contacts.items()
-            if s == ContactState.LIVE and c.timespan[1] >= time
-        ]
-        if len(deactivations) == 0:
-            return None
-        return min(deactivations)
+    def next_event_time(self, after: int) -> int | None:
+        """Return the next time at which any contact changes state."""
+        candidates: list[int] = []
+        for c, s in self.contacts.items():
+            if s == ContactState.PRE and c.begin >= after:
+                candidates.append(c.begin)
+            if s == ContactState.LIVE and c.end >= after:
+                candidates.append(c.end)
+        return min(candidates) if candidates else None
 
     def reset(self) -> None:
         """Resets the contact plan to its initial state."""
         for c in self.contacts:
             self.contacts[c] = ContactState.PRE
-
-    def get_max_time(self) -> int:
-        """Returns the maximum time in the contact plan."""
-        return max([c.timespan[1] for c in self.contacts])
-
-    # TODO: unused.. remove..?
-    def has_contact(self, simtime: int, node1: str, node2: str) -> bool:
-        current_contacts = self.at(simtime)
-        # print("[ %f ] has_contact: %d %d | %s" % (simtime, node1, node2, current_contacts[0]))
-        for c in current_contacts:
-            if c[0].nodes[0] == node1 and c[0].nodes[1] == node2:
-                return True
-            if c[0].nodes[0] == node2 and c[0].nodes[1] == node1:
-                return True
-        return False
-
-    def all_contacts(self) -> list[tuple[str, str]]:
-        all = [(c.nodes[0], c.nodes[1]) for c in self.contacts]
-        # remove duplicates
-        return list(set(all))

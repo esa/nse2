@@ -2,9 +2,7 @@ import subprocess
 
 
 def run_in_container(container_name: str, command: str, debug_print: bool = False):
-    """
-    Sets the command on all interfaces of the container.
-    """
+    """Run a shell command inside a Docker container and return stdout."""
     if debug_print:
         print(f"Running command in container {container_name}: {command}")
     res = subprocess.run(
@@ -16,26 +14,10 @@ def run_in_container(container_name: str, command: str, debug_print: bool = Fals
     )
 
     if res.returncode != 0:
-        print("Error executing subprocess:")
-        print(f"Args: {res.args}")
-        print(f"stderr: {res.stderr}")
-        quit(1)
+        raise RuntimeError(
+            f"Command failed in container {res.args}:\n" + f"stderr: {res.stderr}"
+        )
     return res.stdout
-
-
-def set_on_all_interfaces(container_name: str, command: str, loss: float = 0.0):
-    """
-    Sets the command on all interfaces of the container.
-    """
-    res = run_in_container(
-        container_name,
-        "cat /proc/net/dev | awk \"{print \$1}\" | grep -E -o '^eth[0-9]+' | xargs -I @ tc qdisc "
-        + command
-        + " dev @ root netem loss "
-        + str(loss)
-        + "%",
-    )
-    return res
 
 
 def set_on_interface(
@@ -47,14 +29,11 @@ def set_on_interface(
     jitter: float = 0,
     bandwidth: str = "",
 ):
-    """
-    Sets the command on the specified interface of the container.
-    """
+    """Apply tc/netem settings to one interface in a Docker container."""
     if delay > 1000:
-        delay_str = f"{delay//1000}s"
+        delay_str = f"{delay // 1000}s"
     else:
         delay_str = f"{delay}ms"
-    print(delay_str)
     cmd = f"tc qdisc {command} dev {interface} root netem loss {loss}% delay {delay_str} {jitter}ms"
     if bandwidth != "":
         cmd += f" rate {bandwidth}"

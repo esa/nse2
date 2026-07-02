@@ -54,9 +54,10 @@ class ContactPlayer:
 
     # derived topology state
     @property
-    def unique_interfaces(self) -> set[tuple[Node, NetworkName]]:
-        """Interfaces used by dynamic contacts and initialized with netem."""
-        return {(c.src, c.network) for c in self.plan.contacts}
+    def unique_interfaces(self) -> set[tuple[Node, str]]:
+        """Unique set of interfaces on nodes, used by contacts"""
+        # TODO: update docs
+        return {(c.src, c.src.interfaces[c.network].dev) for c in self.plan.contacts}
 
     @property
     def physical_links(self) -> set[Link]:
@@ -71,7 +72,9 @@ class ContactPlayer:
     def fixed_links(self) -> set[Link]:
         """Always-visible links defined as fixed CCP contacts."""
         return {
-            Link(c.src, c.dst, c.network, "static") for c in self.plan.fixed_contacts
+            Link(c.src, c.dst, c.network, "static")
+            for c in self.plan.contacts
+            if c.end == -1
         }
 
     @property
@@ -80,14 +83,16 @@ class ContactPlayer:
         return {
             Link(c.src, c.dst, c.network, "active")
             for c, state in self.plan.contacts.items()
-            if state == ContactState.LIVE
+            if state == ContactState.ACTIVE and c.end != -1
         }
 
     @property
     def visible_links(self) -> set[Link]:
         """Links currently visible in the network map (static + fixed + active)."""
         dynamic_keys = {
-            (*sorted((c.src.name, c.dst.name)), c.network) for c in self.plan.contacts
+            (*sorted((c.src.name, c.dst.name)), c.network)
+            for c in self.plan.contacts
+            if c.end != -1
         }
 
         static_links = {
@@ -99,36 +104,18 @@ class ContactPlayer:
 
     # lifecycle
     def setup(self) -> None:
-        """Initialize dynamic contacts as blocked and enable fixed contacts."""
-        for node, network in self.unique_interfaces:
-            iface = node.interfaces[network].dev
-            print(f"[INIT] Initialize contact: interface {iface} on node {node.name}")
-
-            set_on_interface(node.name, iface, command="add", loss=100.0)
-
-        for contact in self.plan.fixed_contacts:
+        """Initialize all interfaces used by contacts with 100% loss."""
+        for node, interface in self.unique_interfaces:
+            set_on_interface(node.name, interface, "add", loss=100)
             print(
-                f"[INIT] Initialize fixed contact: interface {contact.src.interfaces[contact.network].dev} on node {contact.src.name}"
+                f"[INIT] Initialize contact: interface {interface} on node {node.name}"
             )
-            self._apply_contact(contact, command="add")
-
-        self.update_netmap()
 
     def cleanup(self) -> None:
         """Remove configured qdiscs and clear generated runtime state."""
-        for node, network in self.unique_interfaces:
+        for node, interface in self.unique_interfaces:
             try:
-                set_on_interface(node.name, node.interfaces[network].dev, command="del")
-            except RuntimeError as e:
-                print(f"ERROR: {e}")
-
-        for contact in self.plan.fixed_contacts:
-            try:
-                set_on_interface(
-                    contact.src.name,
-                    contact.src.interfaces[contact.network].dev,
-                    command="del",
-                )
+                set_on_interface(node.name, interface, command="del")
             except RuntimeError as e:
                 print(f"ERROR: {e}")
 
@@ -147,43 +134,40 @@ class ContactPlayer:
             self.setup()
 
             while not self.stop:
-                next_time = self.plan.next_event_time(current_time)
+                for c in self.plan.contacts_to_activate(current_time):
+                    print(f"[ {current_time} ] Activating {c}")
+                    self.activate(c)
+                for c in self.plan.contacts_to_deactivate(current_time):
+                    print(f"[ {current_time} ] Deactivating {c}")
+                    self.deactivate(c)
+
+                self.update_netmap()
+
+                next_time = self.plan.next_contact_event(current_time)
                 if next_time is None:
                     if self.plan.loop or loop_override:
                         print("Reached the end of the loop... looping...")
                         current_time = 0
-                        self.plan.reset()
                         continue
                     print("No more events... exiting...")
                     break
                 print(f"[ {current_time} ] Next event(s) at {next_time}")
 
                 self._sleep_until(next_time, current_time)
-                if self.stop:
-                    break
                 current_time = next_time
-
-                for contact in self.plan.contacts_to_activate(current_time):
-                    print(f"[ {current_time} ] Activating {contact}")
-                    self.activate(contact)
-                for contact in self.plan.contacts_to_deactivate(current_time):
-                    print(f"[ {current_time} ] Deactivating {contact}")
-                    self.deactivate(contact)
-
-                self.update_netmap()
         finally:
             self.cleanup()
 
     # contact state changes
     def activate(self, contact: Contact) -> None:
-        """Apply a contact and mark it as live."""
+        """Apply a contact and mark it as active."""
         self._apply_contact(contact)
-        self.plan.contacts[contact] = ContactState.LIVE
+        self.plan.contacts[contact] = ContactState.ACTIVE
 
     def deactivate(self, contact: Contact) -> None:
-        """Block a contact and mark it as completed."""
+        """Block a contact and mark it as inactive."""
         self._apply_contact(contact, deactivate=True)
-        self.plan.contacts[contact] = ContactState.POST
+        self.plan.contacts[contact] = ContactState.INACTIVE
 
     def _apply_contact(
         self, contact: Contact, command: str = "change", deactivate: bool = False

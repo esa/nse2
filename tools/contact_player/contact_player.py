@@ -6,29 +6,15 @@ import time
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
-from typing import Literal
 
 from tools.contact_player.ccp import (
     Contact,
     ContactPlan,
     ContactState,
 )
-from tools.contact_player.scenario import (
-    NetworkName,
-    Node,
-    load_scenario,
-)
+from tools.contact_player.scenario import Node, load_scenario
+
 from tools.contact_player.tc_netem import set_on_interface
-
-LinkKind = Literal["static", "active"]
-
-
-@dataclass(frozen=True)
-class Link:
-    src: Node
-    dst: Node
-    network: NetworkName
-    kind: LinkKind
 
 
 @dataclass
@@ -59,48 +45,30 @@ class ContactPlayer:
         # TODO: update docs
         return {(c.src, c.src.interfaces[c.network].dev) for c in self.plan.contacts}
 
+    # the following two link properties are used for generating the netmap and
+    # answer the socket. This implementation and the API should see some reworking
+    # to allow more things, like drawing deactivated connections etc
     @property
-    def physical_links(self) -> set[Link]:
-        """All physical links implied by shared compose networks."""
-        return {
-            Link(a, b, network, "static")
+    def static_links(self) -> set[frozenset[Node]]:
+        """Links, represented as pairs of nodes, implied by the compose file without the dynamic contacts."""
+        all_physical_links = {
+            frozenset((a, b))
             for a, b in combinations(self.nodes.values(), 2)
-            for network in a.interfaces.keys() & b.interfaces.keys()
+            if a.interfaces.keys() & b.interfaces.keys()
         }
+        dynamic_links = {
+            frozenset((c.src, c.dst)) for c in self.plan.contacts if c.end != -1
+        }
+        return all_physical_links - dynamic_links
 
     @property
-    def fixed_links(self) -> set[Link]:
-        """Always-visible links defined as fixed CCP contacts."""
+    def active_dynamic_links(self) -> set[frozenset[Node]]:
+        """Links, represented as pairs of nodes, that are currently active dynamic contacts."""
         return {
-            Link(c.src, c.dst, c.network, "static")
-            for c in self.plan.contacts
-            if c.end == -1
+            frozenset((c.src, c.dst))
+            for c, s in self.plan.contacts.items()
+            if s == ContactState.ACTIVE and c.end != -1
         }
-
-    @property
-    def active_links(self) -> set[Link]:
-        """Currently active dynamic contact links."""
-        return {
-            Link(c.src, c.dst, c.network, "active")
-            for c, state in self.plan.contacts.items()
-            if state == ContactState.ACTIVE and c.end != -1
-        }
-
-    @property
-    def visible_links(self) -> set[Link]:
-        """Links currently visible in the network map (static + fixed + active)."""
-        dynamic_keys = {
-            (*sorted((c.src.name, c.dst.name)), c.network)
-            for c in self.plan.contacts
-            if c.end != -1
-        }
-
-        static_links = {
-            l
-            for l in self.physical_links
-            if (*sorted((l.src.name, l.dst.name)), l.network) not in dynamic_keys
-        }
-        return static_links | self.fixed_links | self.active_links
 
     # lifecycle
     def setup(self) -> None:
@@ -193,15 +161,11 @@ class ContactPlayer:
             return
         self.netmap_path.parent.mkdir(parents=True, exist_ok=True)
 
-        links = sorted(
-            self.visible_links,
-            key=lambda l: (l.src.name, l.dst.name, l.network),
-        )
-
         with open(self.netmap_path, "w") as f:
-            for link in links:
-                symbol = "." if link.kind == "active" else "-"
-                f.write(f"{link.src.name} {symbol} {link.dst.name}\n")
+            for a, b in self.static_links:
+                f.write(f"{a.name} - {b.name}\n")
+            for a, b in self.active_dynamic_links:
+                f.write(f"{a.name} . {b.name}\n")
 
     # runtime control
     def _sleep_until(self, target: int, current: int) -> None:
@@ -252,13 +216,9 @@ class ContactPlayer:
                 response = f"{self.scenario_path} {self.plan.ccp_path}"
                 print(f"cmd: Current scenario is {response}")
             elif cmd == "links":
-                response = "\n".join(
-                    f"{l.src.name} {'.' if l.kind == 'active' else '-'} {l.dst.name}"
-                    for l in sorted(
-                        self.visible_links,
-                        key=lambda l: (l.src.name, l.dst.name, l.network),
-                    )
-                )
+                lines = [f"{a} - {b}" for a, b in self.static_links]
+                lines.extend([f"{a} . {b}" for a, b in self.active_dynamic_links])
+                response = "\n".join(lines)
                 print(f"cmd 'links': {response}")
             else:
                 response = f"unknown command: {cmd}"

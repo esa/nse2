@@ -13,9 +13,8 @@ from tools.contact_player.scenario import NetworkName, Node
 class ContactState(Enum):
     """Contact state  of a dynamic contact."""
 
-    PRE = 0
-    LIVE = 1
-    POST = 2
+    INACTIVE = 0
+    ACTIVE = 1
 
 
 @dataclass(frozen=True)
@@ -213,7 +212,7 @@ class Contact:
 
     def is_active(self, time: int) -> bool:
         """Return whether the contact is active at the given simulation time."""
-        return self.end <= 0 or self.begin <= time <= self.end
+        return self.end == -1 or self.begin <= time < self.end
 
     @override
     def __str__(self) -> str:
@@ -230,7 +229,6 @@ class ContactPlan:
 
     ccp_path: Path
     contacts: dict[Contact, ContactState] = field(default_factory=dict)
-    fixed_contacts: list[Contact] = field(default_factory=list)
     loop: bool = False
 
     @classmethod
@@ -239,13 +237,11 @@ class ContactPlan:
     ) -> "ContactPlan":
         """Load and resolve a CCP file against the scenario nodes."""
         raw_plan = RawCcpContactPlan.from_file(path)
-        contacts = _resolve_contacts(raw_plan.contacts, nodes)
-        fixed_contacts = _resolve_contacts(raw_plan.fixed_contacts, nodes)
+        contacts = _resolve_contacts(raw_plan.contacts + raw_plan.fixed_contacts, nodes)
 
         return cls(
             Path(path),
-            {c: ContactState.PRE for c in contacts},
-            fixed_contacts,
+            {c: ContactState.INACTIVE for c in contacts},
             raw_plan.loop,
         )
 
@@ -254,7 +250,7 @@ class ContactPlan:
         contacts = [
             c
             for c, s in self.contacts.items()
-            if c.is_active(time) and s == ContactState.PRE
+            if c.is_active(time) and s == ContactState.INACTIVE
         ]
         return contacts
 
@@ -263,21 +259,16 @@ class ContactPlan:
         contacts = [
             c
             for c, s in self.contacts.items()
-            if c.end <= time and s == ContactState.LIVE
+            if not c.is_active(time) and s == ContactState.ACTIVE
         ]
         return contacts
 
-    def next_event_time(self, after: int) -> int | None:
+    def next_contact_event(self, after: int) -> int | None:
         """Return the next time at which any contact changes state."""
         candidates: list[int] = []
         for c, s in self.contacts.items():
-            if s == ContactState.PRE and c.begin >= after:
+            if s == ContactState.INACTIVE and c.begin > after:
                 candidates.append(c.begin)
-            if s == ContactState.LIVE and c.end >= after:
+            if s == ContactState.ACTIVE and c.end > after:
                 candidates.append(c.end)
         return min(candidates) if candidates else None
-
-    def reset(self) -> None:
-        """Resets the contact plan to its initial state."""
-        for c in self.contacts:
-            self.contacts[c] = ContactState.PRE

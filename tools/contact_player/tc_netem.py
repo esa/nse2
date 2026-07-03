@@ -1,13 +1,25 @@
+from collections.abc import Mapping
 import subprocess
 
 
-def run_in_container(container_name: str, command: str, debug_print: bool = False):
+def run_in_container(
+    container_name: str,
+    command: str,
+    env: Mapping[str, str] | None = None,
+    debug_print: bool = False,
+) -> str:
     """Run a shell command inside a Docker container and return stdout."""
     if debug_print:
         print(f"Running command in container {container_name}: {command}")
+    args = ["docker", "exec"]
+    if env:
+        for k, v in env.items():
+            args += ["-e", f"{k}={v}"]
+    args += [container_name, "bash", "-c", command]
+
     res = subprocess.run(
-        f"docker exec {container_name} bash -c '{command}'",
-        shell=True,
+        args,
+        # shell=True,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

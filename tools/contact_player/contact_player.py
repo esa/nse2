@@ -28,6 +28,9 @@ class ContactHandler(Protocol):
     nodes: dict[str, Node]
 
     @property
+    def unique_contact_links(self) -> set[tuple[Node, Node, str]]: ...
+
+    @property
     def static_links(self) -> set[frozenset[Node]]: ...
 
     @property
@@ -56,6 +59,12 @@ class CommandContactHandler:
     command: str
 
     @property
+    def unique_contact_links(self) -> set[tuple[Node, Node, str]]:
+        """Unique directed node/network pairs referenced by contacts."""
+        # TODO: update docs
+        return {(c.src, c.dst, c.network) for c in self.plan.contacts}
+
+    @property
     def static_links(self) -> set[frozenset[Node]]:
         return NotImplemented
 
@@ -64,48 +73,74 @@ class CommandContactHandler:
         return NotImplemented
 
     def setup(self) -> None:
-        # TODO: call each node with event=setup for each interface, just like the TcNetemContactHandler
-        pass
+        for src, dst, net in self.unique_contact_links:
+            self._run_link("setup", src, dst, net, time=0)
+
+    def cleanup(self) -> None:
+        for src, dst, net in self.unique_contact_links:
+            self._run_link("cleanup", src, dst, net, time=0)
 
     def process_time(self, time: int) -> None:
         for contact in self.plan.contacts_to_activate(time):
             print(f"[ {time} ] Signal ACTIVATE to {contact}")
-            self._run(contact, "activate", time)
+            self._run_contact("activate", contact, time)
             self.plan.contacts[contact] = ContactState.ACTIVE
         for contact in self.plan.contacts_to_deactivate(time):
             print(f"[ {time} ] Signal DEACTIVATE to {contact}")
-            self._run(contact, "deactivate", time)
+            self._run_contact("deactivate", contact, time)
             self.plan.contacts[contact] = ContactState.INACTIVE
 
     def next_event(self, after: int) -> int | None:
         return self.plan.next_contact_event(after)
 
-    def cleanup(self) -> None:
-        # TODO: see setup()
-        pass
-
-    def _run(self, contact: Contact, event: str, time: int) -> None:
-        run_in_container(
-            contact.src.name, self.command, env=self._env(contact, event, time)
+    def _run_contact(self, event: str, contact: Contact, time: int) -> None:
+        self._run_link(
+            event, contact.src, contact.dst, contact.network, time, contact=contact
         )
 
-    def _env(self, contact: Contact, event: str, time: int) -> dict[str, str]:
-        return {
+    def _run_link(
+        self,
+        event: str,
+        src: Node,
+        dst: Node,
+        network: str,
+        time: int,
+        contact: Contact | None = None,
+    ) -> None:
+        run_in_container(
+            src.name,
+            self.command,
+            env=self._env(event, src, dst, network, time, contact),
+        )
+
+    def _env(
+        self,
+        event: str,
+        src: Node,
+        dst: Node,
+        network: str,
+        time: int,
+        contact: Contact | None = None,
+    ) -> dict[str, str]:
+        env = {
             "NSE2_EVENT": event,
             "NSE2_TIME": str(time),
-            "NSE2_SRC": contact.src.name,
-            "NSE2_DST": contact.dst.name,
-            "NSE2_SRC_EID": contact.src.eid,
-            "NSE2_DST_EID": contact.dst.eid,
-            "NSE2_NETWORK": contact.network,
-            "NSE2_INTERFACE": contact.src.interfaces[contact.network].dev,
-            "NSE2_BEGIN": str(contact.begin),
-            "NSE2_END": str(contact.end),
-            "NSE2_BANDWIDTH": contact.props.bandwidth,
-            "NSE2_LOSS": str(contact.props.loss),
-            "NSE2_DELAY": str(contact.props.delay),
-            "NSE2_JITTER": str(contact.props.jitter),
+            "NSE2_SRC": src.name,
+            "NSE2_DST": dst.name,
+            "NSE2_SRC_EID": src.eid,
+            "NSE2_DST_EID": dst.eid,
+            "NSE2_NETWORK": network,
         }
+        if contact is not None:
+            env |= {
+                "NSE2_BEGIN": str(contact.begin),
+                "NSE2_END": str(contact.end),
+                "NSE2_BANDWIDTH": contact.props.bandwidth,
+                "NSE2_LOSS": str(contact.props.loss),
+                "NSE2_DELAY": str(contact.props.delay),
+                "NSE2_JITTER": str(contact.props.jitter),
+            }
+        return env
 
 
 @dataclass
@@ -115,11 +150,11 @@ class TcNetemContactHandler:
 
     # derived topology state
     @property
-    def unique_interfaces(self) -> set[tuple[Node, str]]:
-        """Unique set of interfaces on nodes, used by contacts"""
-        # TODO: update docs
-        return {(c.src, c.src.interfaces[c.network].dev) for c in self.plan.contacts}
+    def unique_contact_links(self) -> set[tuple[Node, Node, str]]:
+        """Unique directed node/network pairs referenced by contacts."""
+        return {(c.src, c.dst, c.network) for c in self.plan.contacts}
 
+    # c.src.interfaces[c.network].dev
     # the following two link properties are used for generating the netmap and
     # answer the socket. This implementation and the API should see some reworking
     # to allow more things, like drawing deactivated connections etc
@@ -148,17 +183,17 @@ class TcNetemContactHandler:
     # lifecycle
     def setup(self) -> None:
         """Initialize all interfaces used by contacts with 100% loss."""
-        for node, interface in self.unique_interfaces:
-            set_on_interface(node.name, interface, "add", loss=100)
+        for src, _, net in self.unique_contact_links:
+            set_on_interface(src.name, src.interfaces[net].dev, "add", loss=100)
             print(
-                f"[INIT] Initialize contact: interface {interface} on node {node.name}"
+                f"[INIT] Initialize contact: interface {src.interfaces[net].dev} on node {src.name}"
             )
 
     def cleanup(self) -> None:
         """Remove configured qdiscs and clear generated runtime state."""
-        for node, interface in self.unique_interfaces:
+        for src, _, net in self.unique_contact_links:
             try:
-                set_on_interface(node.name, interface, command="del")
+                set_on_interface(src.name, src.interfaces[net].dev, command="del")
             except RuntimeError as e:
                 print(f"ERROR: {e}")
 
@@ -221,12 +256,6 @@ class ContactPlayer:
             while not self.stop:
                 for handler in self.handlers:
                     handler.process_time(current_time)
-                    # for c in rt.plan.contacts_to_activate(current_time):
-                    #     print(f"[ {current_time} ] Activating {c}")
-                    #     rt.activate(c)
-                    # for c in rt.plan.contacts_to_deactivate(current_time):
-                    #     print(f"[ {current_time} ] Deactivating {c}")
-                    #     rt.deactivate(c)
 
                 self.update_netmap()
 

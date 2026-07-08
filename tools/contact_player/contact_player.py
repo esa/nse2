@@ -18,10 +18,11 @@ from tools.contact_player.tc_netem import run_in_container, set_on_interface
 
 
 class ContactHandler(Protocol):
-    """Side-effect interface for contact state changes.
+    """Common interface for contact-plan side effects.
 
-    The scheduler invokes these methods; handlers decide what (if anything)
-    happens when contacts are set up, activated, or deactivated.
+    A handler owns one ContactPlan and reacts to simulation-time transitions.
+    Different handlers may apply physical effects, notify containers, or expose
+    topology state for external outputs.
     """
 
     plan: ContactPlan
@@ -30,11 +31,17 @@ class ContactHandler(Protocol):
     @property
     def unique_contact_links(self) -> set[tuple[Node, Node, str]]: ...
 
+    """Unique directed contact links as source node, destination node, and network."""
+
     @property
     def static_links(self) -> set[frozenset[Node]]: ...
 
+    """Undirected physical links not controlled by dynamic contacts, but defined by the compose file."""
+
     @property
     def active_dynamic_links(self) -> set[frozenset[Node]]: ...
+
+    """Currently active dynamic links in the topology."""
 
     def setup(self) -> None: ...
 
@@ -47,11 +54,10 @@ class ContactHandler(Protocol):
 
 @dataclass
 class CommandContactHandler:
-    """Invokes a container-supplied script on contact state changes.
+    """Notifies containers about planned contact changes.
 
-    Passes contact information to the script through environment variables.
-    The script is expected to live inside the source container and is run
-    via `docker exec -e K=V ... <container> <command>`.
+    For each directed contact, the configured command is executed inside the
+    source container. Contact/link metadata is passed via environment variables.
     """
 
     plan: ContactPlan
@@ -60,27 +66,29 @@ class CommandContactHandler:
 
     @property
     def unique_contact_links(self) -> set[tuple[Node, Node, str]]:
-        """Unique directed node/network pairs referenced by contacts."""
-        # TODO: update docs
+        """Unique directed contact links as source node, destination node, and network."""
         return {(c.src, c.dst, c.network) for c in self.plan.contacts}
 
     @property
     def static_links(self) -> set[frozenset[Node]]:
-        return NotImplemented
+        raise NotImplementedError
 
     @property
     def active_dynamic_links(self) -> set[frozenset[Node]]:
-        return NotImplemented
+        raise NotImplementedError
 
     def setup(self) -> None:
+        """Notify containers about all known planned links before playback starts."""
         for src, dst, net in self.unique_contact_links:
             self._run_link("setup", src, dst, net, time=0)
 
     def cleanup(self) -> None:
+        """Notify containers about all known planned links before shutdown."""
         for src, dst, net in self.unique_contact_links:
             self._run_link("cleanup", src, dst, net, time=0)
 
     def process_time(self, time: int) -> None:
+        """Emit activate/deactivate notifications due at the given simulation time."""
         for contact in self.plan.contacts_to_activate(time):
             print(f"[ {time} ] Signal ACTIVATE to {contact}")
             self._run_contact("activate", contact, time)
@@ -107,6 +115,7 @@ class CommandContactHandler:
         time: int,
         contact: Contact | None = None,
     ) -> None:
+        """Run the command for either a scheduled contact or generic link event."""
         run_in_container(
             src.name,
             self.command,
@@ -122,6 +131,7 @@ class CommandContactHandler:
         time: int,
         contact: Contact | None = None,
     ) -> dict[str, str]:
+        """Build the environment passed to the container command."""
         env = {
             "NSE2_EVENT": event,
             "NSE2_TIME": str(time),
@@ -145,22 +155,27 @@ class CommandContactHandler:
 
 @dataclass
 class TcNetemContactHandler:
+    """Applies actual contact changes to Docker interfaces using tc/netem.
+
+    This handler defines the physical emulated topology. Interfaces used by
+    contacts are initially blocked and later changed according to contact state.
+    """
+
     plan: ContactPlan
     nodes: dict[str, Node]
 
     # derived topology state
     @property
     def unique_contact_links(self) -> set[tuple[Node, Node, str]]:
-        """Unique directed node/network pairs referenced by contacts."""
+        """Unique directed contact links as source node, destination node, and network."""
         return {(c.src, c.dst, c.network) for c in self.plan.contacts}
 
-    # c.src.interfaces[c.network].dev
     # the following two link properties are used for generating the netmap and
     # answer the socket. This implementation and the API should see some reworking
     # to allow more things, like drawing deactivated connections etc
     @property
     def static_links(self) -> set[frozenset[Node]]:
-        """Links, represented as pairs of nodes, implied by the compose file without the dynamic contacts."""
+        """Undirected physical links not controlled by dynamic contacts, but defined by the compose file."""
         all_physical_links = {
             frozenset((a, b))
             for a, b in combinations(self.nodes.values(), 2)
@@ -173,7 +188,7 @@ class TcNetemContactHandler:
 
     @property
     def active_dynamic_links(self) -> set[frozenset[Node]]:
-        """Links, represented as pairs of nodes, that are currently active dynamic contacts."""
+        """Currently active dynamic links in the topology."""
         return {
             frozenset((c.src, c.dst))
             for c, s in self.plan.contacts.items()
@@ -182,7 +197,7 @@ class TcNetemContactHandler:
 
     # lifecycle
     def setup(self) -> None:
-        """Initialize all interfaces used by contacts with 100% loss."""
+        """Initialize all managed interfaces as blocking."""
         for src, _, net in self.unique_contact_links:
             set_on_interface(src.name, src.interfaces[net].dev, "add", loss=100)
             print(
@@ -190,7 +205,7 @@ class TcNetemContactHandler:
             )
 
     def cleanup(self) -> None:
-        """Remove configured qdiscs and clear generated runtime state."""
+        """Remove qdiscs from all interfaces managed by this handler."""
         for src, _, net in self.unique_contact_links:
             try:
                 set_on_interface(src.name, src.interfaces[net].dev, command="del")
@@ -198,6 +213,7 @@ class TcNetemContactHandler:
                 print(f"ERROR: {e}")
 
     def process_time(self, time: int) -> None:
+        """Apply actual contact transitions due at the given simulation time."""
         for contact in self.plan.contacts_to_activate(time):
             print(f"[ {time} ] Activating {contact}")
             self._apply_contact(contact)
@@ -226,6 +242,12 @@ class TcNetemContactHandler:
 
 @dataclass
 class ContactPlayer:
+    """Drives contact handlers according to simulation time and UDP commands.
+
+    The player owns scheduling, looping, control commands, and netmap output.
+    Contact-specific side effects are delegated to the configured handlers.
+    """
+
     handlers: list[ContactHandler]
     scenario_path: Path
     netmap_path: Path | None = None
@@ -276,6 +298,7 @@ class ContactPlayer:
             self.cleanup()
 
     def _next_event(self, after: int) -> int | None:
+        """Return the earliest upcoming event across all handlers."""
         events = [
             t
             for handler in self.handlers
@@ -297,6 +320,7 @@ class ContactPlayer:
                 f.write(f"{a.name} . {b.name}\n")
 
     def cleanup(self) -> None:
+        """Clean up handlers, netmap state, and the UDP control socket."""
         for handler in self.handlers:
             handler.cleanup()
 
@@ -307,7 +331,7 @@ class ContactPlayer:
 
     # runtime control
     def _sleep_until(self, target: int, current: int) -> None:
-        """Sleep until the next event while processing control commands."""
+        """Wait for the next event while still processing control commands."""
         slept = 0.0
         duration = target - current
 
@@ -372,6 +396,7 @@ class ContactPlayer:
 
 
 def main() -> None:
+    """Load CLI configuration and start the contact player."""
     parser = argparse.ArgumentParser()
     parser.add_argument("-l", "--loop", action="store_true", help="Override looping")
     parser.add_argument(

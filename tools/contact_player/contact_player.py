@@ -314,9 +314,9 @@ class ContactPlayer:
         self.netmap_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(self.netmap_path, "w") as f:
-            for a, b in self.handlers[0].static_links:
+            for a, b in sorted(self.handlers[0].static_links):
                 f.write(f"{a.name} - {b.name}\n")
-            for a, b in self.handlers[0].active_dynamic_links:
+            for a, b in sorted(self.handlers[0].active_dynamic_links):
                 f.write(f"{a.name} . {b.name}\n")
 
     def cleanup(self) -> None:
@@ -374,13 +374,19 @@ class ContactPlayer:
             elif cmd == "time":
                 response = f"{current_time} {next_time}"
                 print(f"cmd: Current time is {current_time}")
-            elif data == b"scenario":
+            elif cmd == "scenario":
                 response = f"{self.scenario_path} {self.handlers[0].plan.ccp_path}"
                 print(f"cmd: Current scenario is {response}")
             elif cmd == "links":
-                lines = [f"{a} - {b}" for a, b in self.handlers[0].static_links]
+                lines = [
+                    f"{a.name} - {b.name}"
+                    for a, b in sorted(self.handlers[0].static_links)
+                ]
                 lines.extend(
-                    [f"{a} . {b}" for a, b in self.handlers[0].active_dynamic_links]
+                    [
+                        f"{a.name} . {b.name}"
+                        for a, b in sorted(self.handlers[0].active_dynamic_links)
+                    ]
                 )
                 response = "\n".join(lines)
                 print(f"cmd 'links': {response}")

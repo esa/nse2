@@ -211,6 +211,14 @@ def main() -> None:
         default=1.0,
         help="Divide contact timestamps by this factor (e.g. --speedup 100 for 100x faster)",
     )
+    parser.add_argument(
+        "--bw-scale",
+        "--bandwidth-scale",
+        dest="bw_scale",
+        type=float,
+        default=1.0,
+        help="Multiply bandwidth values by this factor (e.g. --bw-scale 0.1 for 10%)",
+    )
 
     args = parser.parse_args()
 
@@ -230,7 +238,7 @@ def main() -> None:
                 if args.speedup != 1.0 and ts_end != -1:
                     ts_start = round(ts_start / args.speedup)
                     ts_end = round(ts_end / args.speedup)
-                bw_bps = int(row[4])
+                bw_bps = int(round(int(row[4]) * args.bw_scale))
                 delay_sec = float(row[5])
                 label = row[6] if len(row) == 7 else ""
                 rows.append(

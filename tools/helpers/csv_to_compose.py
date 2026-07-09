@@ -22,11 +22,35 @@ def strip_prefix(name: str, prefix: str) -> str:
     return name
 
 
+def load_nodes(path: str | None, prefix: str = "") -> dict[str, dict[str, str]]:
+    """Load optional node metadata indexed by stripped node label."""
+    if path is None or not os.path.isfile(path):
+        print(
+            "WARNING: no nodes.json found; generating node metadata from CSV labels",
+            file=sys.stderr,
+        )
+        return {}
+
+    with open(path) as f:
+        raw_nodes = json.load(f)
+
+    nodes: dict[str, dict[str, str]] = {}
+    for node in raw_nodes:
+        label = strip_prefix(node["node_label"], prefix)
+        nodes[label] = {
+            "node_label": label,
+            "node_name": node["node_name"],
+            "node_id": node["node_id"],
+        }
+
+    return nodes
+
+
 def get_netif(node1: str, node2: str, label: str) -> str:
     """Generate a docker-compatible network name for a connection.
 
     Ground links (labels without underscores like ``eth``, ``fiber``)
-    use just the sorted node pair.  Space links (labels with underscores
+    use just the sorted node pair. Space links (labels with underscores
     like ``low_ul``) append the first word of the label as a short suffix.
 
     Names exceeding 14 characters are replaced with their MD5 hash to
@@ -44,15 +68,10 @@ def get_netif(node1: str, node2: str, label: str) -> str:
 
 def get_graph_from_csv(
     csvfile: str,
-    mapping: dict[str, Any],
+    nodes: dict[str, dict[str, str]],
     prefix: str = "",
 ) -> nx.MultiDiGraph[str]:
-    """Build a directed multi-graph from a CCSDS contact CSV file.
-
-    `mapping` is a dict used to look up / auto-assign node IDs.
-    It is mutated in place: new nodes get ``{"id": N}`` entries under
-    ``mapping["nodes"]``.
-    """
+    """Build a directed multi-graph from a CCSDS contact CSV file."""
     G: nx.MultiDiGraph[str] = nx.MultiDiGraph()
     with open(csvfile) as f:
         f.readline()
@@ -68,16 +87,26 @@ def get_graph_from_csv(
                 label = row[6] if len(row) == 7 else ""
 
                 for node in (node1, node2):
-                    if node not in mapping["nodes"]:
-                        mapping["nodes"][node] = {
-                            "id": len(mapping["nodes"]) + 1,
+                    if node not in nodes:
+                        node_id = str(len(nodes) + 1)
+                        print(
+                            f"WARNING: node {node!r} missing from nodes.json; "
+                            f"using generated ID {node_id!r}",
+                            file=sys.stderr,
+                        )
+                        nodes[node] = {
+                            "node_label": node,
+                            "node_name": node,
+                            "node_id": node_id,
                         }
+
                     if node not in G.nodes:
                         G.add_node(
                             node,
-                            name=node,
+                            node_label=nodes[node]["node_label"],
+                            node_name=nodes[node]["node_name"],
+                            node_id=nodes[node]["node_id"],
                             type="Host",
-                            id=mapping["nodes"][node]["id"],
                         )
 
                 dynamic_link = not (ts_start == 0 and ts_end == -1)
@@ -155,7 +184,12 @@ def graph_to_compose(
             "hostname": node_name,
             "cap_add": ["NET_ADMIN"],
             "privileged": True,
-            "environment": [f"NODE_ID={data['id']}", f"TYPE={data['type']}"],
+            "environment": [
+                # f"NODE_LABEL={data['node_label']}",
+                f"NODE_NAME={data['node_name']}",
+                f"NODE_ID={data['node_id'].removeprefix('ipn:').removesuffix('.0')}",
+                f"TYPE={data['type']}",
+            ],
             "networks": {},
         }
         if volumes:
@@ -210,7 +244,13 @@ def main() -> None:
         default="",
         help="Remove this prefix from all node names (e.g. --strip-prefix eo)",
     )
-    parser.add_argument("--mapping", type=str, required=False)
+    parser.add_argument(
+        "--nodes",
+        "--mapping",
+        dest="nodes",
+        type=str,
+        help="JSON file defining node labels, names, and IDs",
+    )
     parser.add_argument(
         "--entrypoint",
         "-e",
@@ -245,16 +285,11 @@ def main() -> None:
     cmd_str = f"{os.path.basename(sys.argv[0])} {' '.join(sys.argv[1:])}"
     header = f"# Generated: {date_str}\n# Command: {cmd_str}\n"
 
-    mapping: dict[str, Any] = {}
-    if args.mapping is not None:
-        with open(args.mapping) as f:
-            mapping = json.load(f)
-    if "nodes" not in mapping:
-        mapping["nodes"] = {}
+    nodes = load_nodes(args.nodes, prefix=args.strip_prefix)
 
     G = get_graph_from_csv(
         args.csvfile,
-        mapping,
+        nodes,
         prefix=args.strip_prefix,
     )
 

@@ -1,4 +1,0 @@
-gs.+ dev:eosat_gs.+_lo 100kbit
-eosat dev:eosat_gs.+_lo 1mbit
-gs.+ dev:eosat_gs.+_hi 100kbit
-eosat dev:eosat_gs.+_hi 1000mbit

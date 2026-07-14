@@ -8,11 +8,51 @@ import hashlib
 import json
 import os
 import sys
+from collections import defaultdict
 from contextlib import nullcontext
+from dataclasses import dataclass
 from typing import Any
 
 import networkx as nx
 import yaml
+
+
+@dataclass(frozen=True)
+class ParsedRow:
+    src: str
+    dst: str
+    ts_start: float
+    ts_end: float
+    bw: int
+    delay: float
+    label: str
+
+
+def parse_csv_rows(csvfile: str, prefix: str = "") -> list[ParsedRow]:
+    """Parse a contact CSV into ParsedRow objects, stripping `prefix` from
+    node names. Invalid rows are dropped with a warning."""
+    rows: list[ParsedRow] = []
+    with open(csvfile) as f:
+        f.readline()
+        for row in csv.reader(f):
+            if len(row) not in (6, 7):
+                print(
+                    f"WARNING: skipping row with {len(row)} columns: {row!r}",
+                    file=sys.stderr,
+                )
+                continue
+            rows.append(
+                ParsedRow(
+                    src=strip_prefix(row[0], prefix),
+                    dst=strip_prefix(row[1], prefix),
+                    ts_start=float(row[2]),
+                    ts_end=float(row[3]),
+                    bw=int(row[4]),
+                    delay=float(row[5]),
+                    label=row[6] if len(row) == 7 else "",
+                )
+            )
+    return rows
 
 
 def strip_prefix(name: str, prefix: str) -> str:
@@ -20,6 +60,38 @@ def strip_prefix(name: str, prefix: str) -> str:
     if prefix and name.startswith(prefix):
         return name[len(prefix) :]
     return name
+
+
+def strip_dir_suffix(label: str) -> str:
+    """Remove a trailing _ul or _dl direction suffix, if present."""
+    if label.endswith("_ul") or label.endswith("_dl"):
+        return label[: -len("_ul")]
+    return label
+
+
+def compute_multi_pairs(rows: list[ParsedRow]) -> set[tuple[str, str]]:
+    """Return node pairs needing a dedicated interface: those with more
+    than one distinct label after stripping _ul/_dl suffixes."""
+    pair_keys: defaultdict[tuple[str, str], set[str]] = defaultdict(set)
+    for r in rows:
+        pair_keys[tuple(sorted([r.src, r.dst]))].add(strip_dir_suffix(r.label))  # pyright: ignore[reportArgumentType]
+    return {pair for pair, keys in pair_keys.items() if len(keys) > 1}
+
+
+def make_ifname(
+    node1: str, node2: str, label: str, multi_pairs: set[tuple[str, str]]
+) -> str | None:
+    """Build an interface name for this pair+label, or None if the pair
+    should just use the plain node name. Falls back to a 12-char MD5 hash
+    if the name would exceed the 14-char interface limit."""
+    a, b = tuple(sorted([node1, node2]))
+    if (a, b) not in multi_pairs:
+        return None
+    key = strip_dir_suffix(label)
+    ifname = f"{a}_{b}_{key}" if key else f"{a}_{b}"
+    if len(ifname) >= 14:
+        ifname = hashlib.md5(ifname.encode()).hexdigest()[:12]
+    return ifname
 
 
 def load_nodes(path: str | None, prefix: str = "") -> dict[str, dict[str, str]]:
@@ -46,26 +118,6 @@ def load_nodes(path: str | None, prefix: str = "") -> dict[str, dict[str, str]]:
     return nodes
 
 
-def get_netif(node1: str, node2: str, label: str) -> str:
-    """Generate a docker-compatible network name for a connection.
-
-    Ground links (labels without underscores like ``eth``, ``fiber``)
-    use just the sorted node pair. Space links (labels with underscores
-    like ``low_ul``) append the first word of the label as a short suffix.
-
-    Names exceeding 14 characters are replaced with their MD5 hash to
-    respect the Docker / Linux interface name length limit.
-    """
-    a, b = tuple(sorted([node1, node2]))
-    if "_" in label:
-        ifname = f"{a}_{b}_{label.split('_')[0]}"
-    else:
-        ifname = f"{a}_{b}"
-    if len(ifname) >= 14:
-        ifname = hashlib.md5(ifname.encode()).hexdigest()[:12]
-    return ifname
-
-
 def get_graph_from_csv(
     csvfile: str,
     nodes: dict[str, dict[str, str]],
@@ -73,61 +125,49 @@ def get_graph_from_csv(
 ) -> nx.MultiDiGraph[str]:
     """Build a directed multi-graph from a CCSDS contact CSV file."""
     G: nx.MultiDiGraph[str] = nx.MultiDiGraph()
-    with open(csvfile) as f:
-        f.readline()
-        reader = csv.reader(f)
-        for row in reader:
-            if len(row) == 6 or len(row) == 7:
-                node1 = strip_prefix(row[0], prefix)
-                node2 = strip_prefix(row[1], prefix)
-                ts_start = float(row[2])
-                ts_end = float(row[3])
-                bw = int(row[4])
-                delay = float(row[5])
-                label = row[6] if len(row) == 7 else ""
+    rows = parse_csv_rows(csvfile, prefix=prefix)
+    multi_pairs = compute_multi_pairs(rows)
+    G.graph["multi_pairs"] = multi_pairs
 
-                for node in (node1, node2):
-                    if node not in nodes:
-                        node_id = str(len(nodes) + 1)
-                        print(
-                            f"WARNING: node {node!r} missing from nodes.json; "
-                            f"using generated ID {node_id!r}",
-                            file=sys.stderr,
-                        )
-                        nodes[node] = {
-                            "node_label": node,
-                            "node_name": node,
-                            "node_id": node_id,
-                        }
-
-                    if node not in G.nodes:
-                        G.add_node(
-                            node,
-                            node_label=nodes[node]["node_label"],
-                            node_name=nodes[node]["node_name"],
-                            node_id=nodes[node]["node_id"],
-                            type="Host",
-                        )
-
-                dynamic_link = not (ts_start == 0 and ts_end == -1)
-
-                if not G.has_edge(node1, node2, key=label):
-                    G.add_edge(
-                        node1,
-                        node2,
-                        key=label,
-                        dynamic_link=dynamic_link,
-                        bw=bw,
-                        delay=delay,
-                        loss=0,
-                        jitter=0,
-                        label=label,
-                    )
-            else:
+    for r in rows:
+        for node in (r.src, r.dst):
+            if node not in nodes:
+                node_id = str(len(nodes) + 1)
                 print(
-                    f"WARNING: skipping row with {len(row)} columns: {row!r}",
+                    f"WARNING: node {node!r} missing from nodes.json; ",
+                    f"using generated ID {node_id!r}",
                     file=sys.stderr,
                 )
+                nodes[node] = {
+                    "node_label": node,
+                    "node_name": node,
+                    "node_id": node_id,
+                }
+
+            if node not in G.nodes:
+                G.add_node(
+                    node,
+                    node_label=nodes[node]["node_label"],
+                    node_name=nodes[node]["node_name"],
+                    node_id=nodes[node]["node_id"],
+                    type="Host",
+                )
+
+        dynamic_link = not (r.ts_start == 0 and r.ts_end == -1)
+        edge_key = make_ifname(r.src, r.dst, r.label, multi_pairs) or r.label
+
+        if not G.has_edge(r.src, r.dst, key=edge_key):
+            G.add_edge(
+                r.src,
+                r.dst,
+                key=edge_key,
+                dynamic_link=dynamic_link,
+                bw=r.bw,
+                delay=r.delay,
+                loss=0,
+                jitter=0,
+                label=r.label,
+            )
     return G
 
 
@@ -202,12 +242,15 @@ def graph_to_compose(
             svc["entrypoint"] = entrypoint
         compose["services"][node_name] = svc
 
+    multi_pairs = G.graph.get("multi_pairs", set())
     subnet_count = 0
     subnets: dict[str, str] = {}
     for src, dst, edge_data in G.edges(data=True):
         node1, node2 = tuple(sorted([src, dst]))
         label: str = edge_data["label"]
-        net_name: str = get_netif(node1, node2, label)
+        net_name: str = (
+            make_ifname(node1, node2, label, multi_pairs) or f"{node1}_{node2}"
+        )
 
         if net_name not in subnets:
             subnets[net_name] = f"{base_subnet}.{subnet_count}"

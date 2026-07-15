@@ -69,6 +69,15 @@ def strip_dir_suffix(label: str) -> str:
     return label
 
 
+def shorten_label(label: str) -> str:
+    """Shorten known label parts used in generated interface/network names."""
+    LABEL_REPLACEMENTS = {
+        "high": "hi",
+        "low": "lo",
+    }
+    return "_".join(LABEL_REPLACEMENTS.get(part, part) for part in label.split("_"))
+
+
 def compute_multi_pairs(rows: list[ParsedRow]) -> set[tuple[str, str]]:
     """Return node pairs needing a dedicated interface: those with more
     than one distinct label after stripping _ul/_dl suffixes."""
@@ -87,10 +96,15 @@ def make_ifname(
     a, b = tuple(sorted([node1, node2]))
     if (a, b) not in multi_pairs:
         return None
-    key = strip_dir_suffix(label)
+    key = shorten_label(strip_dir_suffix(label))
     ifname = f"{a}_{b}_{key}" if key else f"{a}_{b}"
     if len(ifname) >= 14:
-        ifname = hashlib.md5(ifname.encode()).hexdigest()[:12]
+        ifname_md5 = hashlib.md5(ifname.encode()).hexdigest()[:12]
+        print(
+            f"WARNING: name {ifname} is too long - using truncated md5 hash {ifname_md5} instead",
+            file=sys.stderr,
+        )
+        return ifname_md5
     return ifname
 
 
@@ -127,7 +141,6 @@ def get_graph_from_csv(
     G: nx.MultiDiGraph[str] = nx.MultiDiGraph()
     rows = parse_csv_rows(csvfile, prefix=prefix)
     multi_pairs = compute_multi_pairs(rows)
-    G.graph["multi_pairs"] = multi_pairs
 
     for r in rows:
         for node in (r.src, r.dst):
@@ -154,13 +167,15 @@ def get_graph_from_csv(
                 )
 
         dynamic_link = not (r.ts_start == 0 and r.ts_end == -1)
-        edge_key = make_ifname(r.src, r.dst, r.label, multi_pairs) or r.label
+        node1, node2 = tuple(sorted([r.src, r.dst]))
+        net_name = make_ifname(r.src, r.dst, r.label, multi_pairs) or f"{node1}_{node2}"
 
-        if not G.has_edge(r.src, r.dst, key=edge_key):
+        if not G.has_edge(r.src, r.dst, key=net_name):
             G.add_edge(
                 r.src,
                 r.dst,
-                key=edge_key,
+                key=net_name,
+                net_name=net_name,
                 dynamic_link=dynamic_link,
                 bw=r.bw,
                 delay=r.delay,
@@ -242,15 +257,12 @@ def graph_to_compose(
             svc["entrypoint"] = entrypoint
         compose["services"][node_name] = svc
 
-    multi_pairs = G.graph.get("multi_pairs", set())
     subnet_count = 0
     subnets: dict[str, str] = {}
     for src, dst, edge_data in G.edges(data=True):
         node1, node2 = tuple(sorted([src, dst]))
         label: str = edge_data["label"]
-        net_name: str = (
-            make_ifname(node1, node2, label, multi_pairs) or f"{node1}_{node2}"
-        )
+        net_name: str = edge_data["net_name"]
 
         if net_name not in subnets:
             subnets[net_name] = f"{base_subnet}.{subnet_count}"

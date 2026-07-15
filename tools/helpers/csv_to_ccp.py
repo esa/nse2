@@ -91,6 +91,15 @@ def strip_dir_suffix(label: str) -> str:
     return label
 
 
+def shorten_label(label: str) -> str:
+    """Shorten known label parts used in generated interface/network names."""
+    LABEL_REPLACEMENTS = {
+        "high": "hi",
+        "low": "lo",
+    }
+    return "_".join(LABEL_REPLACEMENTS.get(part, part) for part in label.split("_"))
+
+
 def compute_multi_pairs(rows: list[ParsedRow]) -> set[tuple[str, str]]:
     """Return node pairs needing a dedicated interface: those with more
     than one distinct label after stripping _ul/_dl suffixes."""
@@ -109,10 +118,15 @@ def make_ifname(
     a, b = tuple(sorted([node1, node2]))
     if (a, b) not in multi_pairs:
         return None
-    key = strip_dir_suffix(label)
+    key = shorten_label(strip_dir_suffix(label))
     ifname = f"{a}_{b}_{key}" if key else f"{a}_{b}"
     if len(ifname) >= 14:
-        ifname = hashlib.md5(ifname.encode()).hexdigest()[:12]
+        ifname_md5 = hashlib.md5(ifname.encode()).hexdigest()[:12]
+        print(
+            f"WARNING: name {ifname} is too long - using truncated md5 hash {ifname_md5} instead",
+            file=sys.stderr,
+        )
+        return ifname_md5
     return ifname
 
 

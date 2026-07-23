@@ -14,7 +14,11 @@ from tools.contact_player.ccp import (
     ContactState,
 )
 from tools.contact_player.scenario import Node, load_scenario
-from tools.contact_player.tc_netem import run_in_container, set_on_interface
+from tools.contact_player.tc_netem import (
+    ContainerCommand,
+    make_tc_command,
+    run_in_containers_parallel,
+)
 
 
 class ContactHandler(Protocol):
@@ -79,48 +83,52 @@ class CommandContactHandler:
 
     def setup(self) -> None:
         """Notify containers about all known planned links before playback starts."""
+        commands: list[ContainerCommand] = []
         for src, dst, net in self.unique_contact_links:
-            self._run_link("setup", src, dst, net, time=0)
+            commands.append((src.name, self.command, self._env("setup", src, dst, net)))
+        run_in_containers_parallel(commands)
 
     def cleanup(self) -> None:
         """Notify containers about all known planned links before shutdown."""
+        commands: list[ContainerCommand] = []
         for src, dst, net in self.unique_contact_links:
-            self._run_link("cleanup", src, dst, net, time=0)
+            commands.append(
+                (src.name, self.command, self._env("cleanup", src, dst, net))
+            )
+        run_in_containers_parallel(commands, raise_on_error=False)
 
     def process_time(self, time: int) -> None:
         """Emit activate/deactivate notifications due at the given simulation time."""
-        for contact in self.plan.contacts_to_activate(time):
-            print(f"[ {time} ] Signal ACTIVATE to {contact}")
-            self._run_contact("activate", contact, time)
-            self.plan.contacts[contact] = ContactState.ACTIVE
-        for contact in self.plan.contacts_to_deactivate(time):
-            print(f"[ {time} ] Signal DEACTIVATE to {contact}")
-            self._run_contact("deactivate", contact, time)
-            self.plan.contacts[contact] = ContactState.INACTIVE
+        # Activations
+        commands: list[ContainerCommand] = []
+        for c in self.plan.contacts_to_activate(time):
+            print(f"[ {time} ] Signal ACTIVATE to {c}")
+            commands.append(
+                (
+                    c.src.name,
+                    self.command,
+                    self._env("activate", c.src, c.dst, c.network, c),
+                )
+            )
+            self.plan.contacts[c] = ContactState.ACTIVE
+        run_in_containers_parallel(commands)
+
+        # Deactivations
+        commands: list[ContainerCommand] = []
+        for c in self.plan.contacts_to_deactivate(time):
+            print(f"[ {time} ] Signal DEACTIVATE to {c}")
+            commands.append(
+                (
+                    c.src.name,
+                    self.command,
+                    self._env("deactivate", c.src, c.dst, c.network, c),
+                )
+            )
+            self.plan.contacts[c] = ContactState.INACTIVE
+        run_in_containers_parallel(commands)
 
     def next_event(self, after: int) -> int | None:
         return self.plan.next_contact_event(after)
-
-    def _run_contact(self, event: str, contact: Contact, time: int) -> None:
-        self._run_link(
-            event, contact.src, contact.dst, contact.network, time, contact=contact
-        )
-
-    def _run_link(
-        self,
-        event: str,
-        src: Node,
-        dst: Node,
-        network: str,
-        time: int,
-        contact: Contact | None = None,
-    ) -> None:
-        """Run the command for either a scheduled contact or generic link event."""
-        run_in_container(
-            src.name,
-            self.command,
-            env=self._env(event, src, dst, network, time, contact),
-        )
 
     def _env(
         self,
@@ -128,13 +136,11 @@ class CommandContactHandler:
         src: Node,
         dst: Node,
         network: str,
-        time: int,
         contact: Contact | None = None,
     ) -> dict[str, str]:
         """Build the environment passed to the container command."""
         env = {
             "NSE2_EVENT": event,
-            "NSE2_TIME": str(time),
             "NSE2_SRC": src.name,
             "NSE2_DST": dst.name,
             "NSE2_SRC_EID": src.eid,
@@ -195,49 +201,72 @@ class TcNetemContactHandler:
             if s == ContactState.ACTIVE and c.end != -1
         }
 
-    # lifecycle
     def setup(self) -> None:
         """Initialize all managed interfaces as blocking."""
+        commands: list[ContainerCommand] = []
         for src, _, net in self.unique_contact_links:
-            set_on_interface(src.name, src.interfaces[net].dev, "add", loss=100)
+            commands.append(
+                (
+                    src.name,
+                    make_tc_command(src.interfaces[net].dev, "add", loss=100),
+                    None,
+                )
+            )
             print(
                 f"[INIT] Initialize contact: interface {src.interfaces[net].dev} on node {src.name}"
             )
+        run_in_containers_parallel(commands)
 
     def cleanup(self) -> None:
         """Remove qdiscs from all interfaces managed by this handler."""
+        commands: list[ContainerCommand] = []
         for src, _, net in self.unique_contact_links:
-            try:
-                set_on_interface(src.name, src.interfaces[net].dev, command="del")
-            except RuntimeError as e:
-                print(f"ERROR: {e}")
+            commands.append(
+                (src.name, make_tc_command(src.interfaces[net].dev, "del"), None)
+            )
+        run_in_containers_parallel(commands, raise_on_error=False)
 
     def process_time(self, time: int) -> None:
         """Apply actual contact transitions due at the given simulation time."""
-        for contact in self.plan.contacts_to_activate(time):
-            print(f"[ {time} ] Activating {contact}")
-            self._apply_contact(contact)
-            self.plan.contacts[contact] = ContactState.ACTIVE
+        # Activations
+        commands: list[ContainerCommand] = []
+        for c in self.plan.contacts_to_activate(time):
+            print(f"[ {time} ] Activating {c}")
+            commands.append(
+                (
+                    c.src.name,
+                    make_tc_command(
+                        c.src.interfaces[c.network].dev,
+                        loss=c.props.loss,
+                        delay=c.props.delay,
+                        jitter=c.props.jitter,
+                        bandwidth=c.props.bandwidth,
+                    ),
+                    None,
+                )
+            )
+            self.plan.contacts[c] = ContactState.ACTIVE
+        run_in_containers_parallel(commands)
 
-        for contact in self.plan.contacts_to_deactivate(time):
-            print(f"[ {time} ] Deactivating {contact}")
-            self._apply_contact(contact, deactivate=True)
-            self.plan.contacts[contact] = ContactState.INACTIVE
+        # Deactivations
+        commands: list[ContainerCommand] = []
+        for c in self.plan.contacts_to_deactivate(time):
+            print(f"[ {time} ] Deactivating {c}")
+            commands.append(
+                (
+                    c.src.name,
+                    make_tc_command(
+                        c.src.interfaces[c.network].dev,
+                        loss=100,
+                    ),
+                    None,
+                )
+            )
+            self.plan.contacts[c] = ContactState.INACTIVE
+        run_in_containers_parallel(commands)
 
     def next_event(self, after: int) -> int | None:
         return self.plan.next_contact_event(after)
-
-    def _apply_contact(self, contact: Contact, deactivate: bool = False) -> None:
-        """Apply a contact's link properties to its source interface."""
-        set_on_interface(
-            contact.src.name,
-            contact.src.interfaces[contact.network].dev,
-            command="change",
-            loss=100.0 if deactivate else contact.props.loss,
-            delay=contact.props.delay,
-            jitter=contact.props.jitter,
-            bandwidth=contact.props.bandwidth,
-        )
 
 
 @dataclass
@@ -254,6 +283,9 @@ class ContactPlayer:
 
     CONTROL_PORT: int = 9966
     TICK: float = 0.1
+    # Delay after setup so freshly-created tc qdiscs have time to take effect
+    # before the first contact transition is applied.
+    SETTLE_DELAY: float = 2.0
 
     # internal fields to control the behavior of the run() function
     paused: bool = False
@@ -274,6 +306,7 @@ class ContactPlayer:
         try:
             for handler in self.handlers:
                 handler.setup()
+            time.sleep(self.SETTLE_DELAY)
 
             while not self.stop:
                 for handler in self.handlers:

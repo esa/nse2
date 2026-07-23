@@ -9,7 +9,7 @@ import re
 import networkx as nx
 import asyncio
 
-from helpers import *
+from tools.mgr.helpers import *
 
 # regex to extract rate, delay, loss, jitter from tc output
 tc_rate = re.compile(r"rate ([0-9]+[KMG]bit)")

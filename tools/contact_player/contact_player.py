@@ -3,10 +3,11 @@ import argparse
 import signal
 import socket
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
-from typing import Protocol
+from typing import Literal
 
 from tools.contact_player.ccp import (
     Contact,
@@ -21,52 +22,18 @@ from tools.contact_player.tc_netem import (
 )
 
 
-class ContactHandler(Protocol):
-    """Common interface for contact-plan side effects.
+@dataclass
+class ContactHandler(ABC):
+    """Base class for contact-plan side effects.
 
     A handler owns one ContactPlan and reacts to simulation-time transitions.
-    Different handlers may apply physical effects, notify containers, or expose
+    Different handlers may apply physical effects, notify containers or expose
     topology state for external outputs.
+    Subclasses must implement setup, cleanup, and command generation for contact transitions.
     """
 
     plan: ContactPlan
     nodes: dict[str, Node]
-
-    @property
-    def unique_contact_links(self) -> set[tuple[Node, Node, str]]: ...
-
-    """Unique directed contact links as source node, destination node, and network."""
-
-    @property
-    def static_links(self) -> set[frozenset[Node]]: ...
-
-    """Undirected physical links not controlled by dynamic contacts, but defined by the compose file."""
-
-    @property
-    def active_dynamic_links(self) -> set[frozenset[Node]]: ...
-
-    """Currently active dynamic links in the topology."""
-
-    def setup(self) -> None: ...
-
-    def process_time(self, time: int) -> None: ...
-
-    def next_event(self, after: int) -> int | None: ...
-
-    def cleanup(self) -> None: ...
-
-
-@dataclass
-class CommandContactHandler:
-    """Notifies containers about planned contact changes.
-
-    For each directed contact, the configured command is executed inside the
-    source container. Contact/link metadata is passed via environment variables.
-    """
-
-    plan: ContactPlan
-    nodes: dict[str, Node]
-    command: str
 
     @property
     def unique_contact_links(self) -> set[tuple[Node, Node, str]]:
@@ -75,64 +42,115 @@ class CommandContactHandler:
 
     @property
     def static_links(self) -> set[frozenset[Node]]:
-        raise NotImplementedError
+        """Undirected physical links not controlled by dynamic contacts, but defined by the compose file."""
+        all_physical_links = {
+            frozenset((a, b))
+            for a, b in combinations(self.nodes.values(), 2)
+            if a.interfaces.keys() & b.interfaces.keys()
+        }
+        dynamic_links = {
+            frozenset((c.src, c.dst)) for c in self.plan.contacts if c.end != -1
+        }
+        return all_physical_links - dynamic_links
 
     @property
     def active_dynamic_links(self) -> set[frozenset[Node]]:
-        raise NotImplementedError
+        """Currently active dynamic links in the topology."""
+        return {
+            frozenset((c.src, c.dst))
+            for c, state in self.plan.contacts.items()
+            if state == ContactState.ACTIVE and c.end != -1
+        }
 
+    @abstractmethod
     def setup(self) -> None:
-        """Notify containers about all known planned links before playback starts."""
-        commands: list[ContainerCommand] = []
-        for src, dst, net in self.unique_contact_links:
-            commands.append((src.name, self.command, self._env("setup", src, dst, net)))
-        run_in_containers_parallel(commands)
-
-    def cleanup(self) -> None:
-        """Notify containers about all known planned links before shutdown."""
-        commands: list[ContainerCommand] = []
-        for src, dst, net in self.unique_contact_links:
-            commands.append(
-                (src.name, self.command, self._env("cleanup", src, dst, net))
-            )
-        run_in_containers_parallel(commands, raise_on_error=False)
+        pass
 
     def process_time(self, time: int) -> None:
-        """Emit activate/deactivate notifications due at the given simulation time."""
-        # Activations
-        commands: list[ContainerCommand] = []
-        for c in self.plan.contacts_to_activate(time):
-            print(f"[ {time} ] Signal ACTIVATE to {c}")
-            commands.append(
-                (
-                    c.src.name,
-                    self.command,
-                    self._env("activate", c.src, c.dst, c.network, c),
-                )
-            )
-            self.plan.contacts[c] = ContactState.ACTIVE
-        run_in_containers_parallel(commands)
+        """Process contact transitions due at the given simulation time."""
+        transitions = (
+            (self.plan.contacts_to_activate(time), ContactState.ACTIVE),
+            (self.plan.contacts_to_deactivate(time), ContactState.INACTIVE),
+        )
 
-        # Deactivations
-        commands: list[ContainerCommand] = []
-        for c in self.plan.contacts_to_deactivate(time):
-            print(f"[ {time} ] Signal DEACTIVATE to {c}")
-            commands.append(
-                (
-                    c.src.name,
-                    self.command,
-                    self._env("deactivate", c.src, c.dst, c.network, c),
-                )
-            )
-            self.plan.contacts[c] = ContactState.INACTIVE
-        run_in_containers_parallel(commands)
+        for contacts, target_state in transitions:
+            commands = [
+                self._transition_command(time, contact, target_state)
+                for contact in contacts
+            ]
+            run_in_containers_parallel(commands)
+
+            for contact in contacts:
+                self.plan.contacts[contact] = target_state
+
+    @abstractmethod
+    def _transition_command(
+        self,
+        time: int,
+        contact: Contact,
+        target_state: ContactState,
+    ) -> ContainerCommand:
+        """Build and log the command for one contact transition."""
 
     def next_event(self, after: int) -> int | None:
         return self.plan.next_contact_event(after)
 
+    @abstractmethod
+    def cleanup(self) -> None:
+        pass
+
+
+@dataclass
+class CommandContactHandler(ContactHandler):
+    """Notifies containers about planned contact changes.
+
+    For each directed contact, the configured command is executed inside the
+    source container. Contact/link metadata is passed via environment variables.
+    """
+
+    command: str
+
+    def setup(self) -> None:
+        """Notify containers about all known planned links before playback starts."""
+        commands = [
+            (src.name, self.command, self._env("setup", src, dst, net))
+            for src, dst, net in self.unique_contact_links
+        ]
+        run_in_containers_parallel(commands)
+
+    def _transition_command(
+        self,
+        time: int,
+        contact: Contact,
+        target_state: ContactState,
+    ) -> ContainerCommand:
+        event = "activate" if target_state == ContactState.ACTIVE else "deactivate"
+
+        print(f"[ {time} ] Signal {event.upper()} to {contact}")
+
+        return (
+            contact.src.name,
+            self.command,
+            self._env(
+                event,
+                contact.src,
+                contact.dst,
+                contact.network,
+                contact,
+            ),
+        )
+
+    def cleanup(self) -> None:
+        """Notify containers about all known planned links before shutdown."""
+        commands = [
+            (src.name, self.command, self._env("cleanup", src, dst, net))
+            for src, dst, net in self.unique_contact_links
+        ]
+        run_in_containers_parallel(commands, raise_on_error=False)
+
     def _env(
         self,
-        event: str,
+        event: Literal["setup", "cleanup", "activate", "deactivate"],
         src: Node,
         dst: Node,
         network: str,
@@ -156,54 +174,22 @@ class CommandContactHandler:
                 "NSE2_DELAY": str(contact.props.delay),
                 "NSE2_JITTER": str(contact.props.jitter),
             }
+
         return env
 
 
 @dataclass
-class TcNetemContactHandler:
+class TcNetemContactHandler(ContactHandler):
     """Applies actual contact changes to Docker interfaces using tc/netem.
 
-    This handler defines the physical emulated topology. Interfaces used by
-    contacts are initially blocked and later changed according to contact state.
+    Interfaces used by contacts are initially blocked and later changed
+    according to contact state.
     """
-
-    plan: ContactPlan
-    nodes: dict[str, Node]
-
-    # derived topology state
-    @property
-    def unique_contact_links(self) -> set[tuple[Node, Node, str]]:
-        """Unique directed contact links as source node, destination node, and network."""
-        return {(c.src, c.dst, c.network) for c in self.plan.contacts}
-
-    # the following two link properties are used for generating the netmap and
-    # answer the socket. This implementation and the API should see some reworking
-    # to allow more things, like drawing deactivated connections etc
-    @property
-    def static_links(self) -> set[frozenset[Node]]:
-        """Undirected physical links not controlled by dynamic contacts, but defined by the compose file."""
-        all_physical_links = {
-            frozenset((a, b))
-            for a, b in combinations(self.nodes.values(), 2)
-            if a.interfaces.keys() & b.interfaces.keys()
-        }
-        dynamic_links = {
-            frozenset((c.src, c.dst)) for c in self.plan.contacts if c.end != -1
-        }
-        return all_physical_links - dynamic_links
-
-    @property
-    def active_dynamic_links(self) -> set[frozenset[Node]]:
-        """Currently active dynamic links in the topology."""
-        return {
-            frozenset((c.src, c.dst))
-            for c, s in self.plan.contacts.items()
-            if s == ContactState.ACTIVE and c.end != -1
-        }
 
     def setup(self) -> None:
         """Initialize all managed interfaces as blocking."""
         commands: list[ContainerCommand] = []
+
         for src, _, net in self.unique_contact_links:
             commands.append(
                 (
@@ -213,60 +199,46 @@ class TcNetemContactHandler:
                 )
             )
             print(
-                f"[INIT] Initialize contact: interface {src.interfaces[net].dev} on node {src.name}"
+                "[INIT] Initialize contact: interface",
+                f"{src.interfaces[net].dev} on node {src.name}",
             )
+
         run_in_containers_parallel(commands)
+
+    def _transition_command(
+        self,
+        time: int,
+        contact: Contact,
+        target_state: ContactState,
+    ) -> ContainerCommand:
+        interface = contact.src.interfaces[contact.network].dev
+
+        if target_state == ContactState.ACTIVE:
+            print(f"[ {time} ] Activating {contact}")
+            command = make_tc_command(
+                interface,
+                loss=contact.props.loss,
+                delay=contact.props.delay,
+                jitter=contact.props.jitter,
+                bandwidth=contact.props.bandwidth,
+            )
+        else:
+            print(f"[ {time} ] Deactivating {contact}")
+            command = make_tc_command(interface, loss=100)
+
+        return contact.src.name, command, None
 
     def cleanup(self) -> None:
         """Remove qdiscs from all interfaces managed by this handler."""
-        commands: list[ContainerCommand] = []
-        for src, _, net in self.unique_contact_links:
-            commands.append(
-                (src.name, make_tc_command(src.interfaces[net].dev, "del"), None)
+        commands = [
+            (
+                src.name,
+                make_tc_command(src.interfaces[net].dev, "del"),
+                None,
             )
+            for src, _, net in self.unique_contact_links
+        ]
         run_in_containers_parallel(commands, raise_on_error=False)
-
-    def process_time(self, time: int) -> None:
-        """Apply actual contact transitions due at the given simulation time."""
-        # Activations
-        commands: list[ContainerCommand] = []
-        for c in self.plan.contacts_to_activate(time):
-            print(f"[ {time} ] Activating {c}")
-            commands.append(
-                (
-                    c.src.name,
-                    make_tc_command(
-                        c.src.interfaces[c.network].dev,
-                        loss=c.props.loss,
-                        delay=c.props.delay,
-                        jitter=c.props.jitter,
-                        bandwidth=c.props.bandwidth,
-                    ),
-                    None,
-                )
-            )
-            self.plan.contacts[c] = ContactState.ACTIVE
-        run_in_containers_parallel(commands)
-
-        # Deactivations
-        commands: list[ContainerCommand] = []
-        for c in self.plan.contacts_to_deactivate(time):
-            print(f"[ {time} ] Deactivating {c}")
-            commands.append(
-                (
-                    c.src.name,
-                    make_tc_command(
-                        c.src.interfaces[c.network].dev,
-                        loss=100,
-                    ),
-                    None,
-                )
-            )
-            self.plan.contacts[c] = ContactState.INACTIVE
-        run_in_containers_parallel(commands)
-
-    def next_event(self, after: int) -> int | None:
-        return self.plan.next_contact_event(after)
 
 
 @dataclass

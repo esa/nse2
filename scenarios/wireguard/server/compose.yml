@@ -1,0 +1,46 @@
+name: wireguard-external-server
+
+services:
+  wg-server:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wg-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Etc/UTC}
+      PEERS: nse2client
+      SERVERURL: ${SERVER_URL:?SERVER_URL must be set}
+      SERVERPORT: ${SERVER_PORT:-51820}
+      INTERNAL_SUBNET: 10.192.122.0
+      ALLOWEDIPS: 10.192.122.0/24
+      SERVER_ALLOWEDIPS_PEER_nse2client: 172.30.0.0/24,172.31.0.0/24
+      LOG_CONFS: "false"
+    volumes:
+      - ./runtime/config:/config
+      - ./templates/peer.conf:/config/templates/peer.conf:ro
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "${SERVER_PORT:-51820}:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped
+
+  app:
+    image: alpine:latest
+    container_name: external-app
+    network_mode: "service:wg-server"
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache python3
+        mkdir -p /var/www
+        echo '<html><body><h1>Hello from external WireGuard service!</h1></body></html>' > /var/www/index.html
+        python3 -m http.server 80 --directory /var/www
+    depends_on:
+      - wg-server
+
+    restart: unless-stopped

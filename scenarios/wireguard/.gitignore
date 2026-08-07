@@ -1,0 +1,13 @@
+.env
+
+server/runtime/config/*
+!server/runtime/config/.gitkeep
+
+client/runtime/*
+!client/runtime/.gitkeep
+!client/runtime/wg-confs
+client/runtime/wg-confs/*
+!client/runtime/wg-confs/.gitkeep
+
+*.key
+*.conf.generated

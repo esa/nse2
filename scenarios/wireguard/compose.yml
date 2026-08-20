@@ -8,22 +8,31 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      TZ: ${TZ:-Etc/UTC}
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
       PEERS: external
       PERSISTENTKEEPALIVE_PEERS: external
-      SERVERURL: ${SERVER_URL:?SERVER_URL must be set}
-      SERVERPORT: ${SERVER_PORT:-51820}
-      INTERNAL_SUBNET: 10.192.122.0
+
+      # Address and port written to the generated client configuration.
+      # Use host.docker.internal for same-host testing; otherwise, use an
+      # address reachable from the external host.
+      SERVERURL: host.docker.internal
+      SERVERPORT: 51820
+
+      # Networks the generated client configuration routes through WireGuard.
+      # Add any NSE2 network that the external service must be able to reach.
       ALLOWEDIPS: 10.192.122.0/24,172.30.0.0/24,172.31.0.0/24
+
+      INTERNAL_SUBNET: 10.192.122.0
     volumes:
-      - ./server/runtime/config:/config
+      - ./server/runtime:/config
       - ./server/templates/server.conf:/config/templates/server.conf:ro
       - ./server/setup-iptables.sh:/config/setup-iptables.sh:ro
       - /lib/modules:/lib/modules:ro
     ports:
-      - "${SERVER_PORT:-51820}:51820/udp"
+      # The published UDP port must match SERVERPORT.
+      - "51820:51820/udp"
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
     restart: unless-stopped

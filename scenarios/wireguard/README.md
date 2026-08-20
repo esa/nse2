@@ -1,69 +1,118 @@
 ## WireGuard External Service Example
 
-Brings an external service (different machine, cloud container, hardware) into a nse2 simulation through a WireGuard tunnel. The `wg-client` acts as a transparent proxy: nodes send traffic to its Docker IPs, iptables DNAT forwards it over the
-tunnel.
+This scenario connects one external service to NSE2 through a WireGuard tunnel.
+NSE2 runs the WireGuard server alongside the example nodes `n1` and `n2`.
+The external host runs the WireGuard client and an application that shares the client's network namespace.
 
-```
-n1 (curl wg-client@172.30.0.2) -> wg-client -> WG tunnel -> external app
-n2 (curl wg-client@172.31.0.2) -> wg-client -> WG tunnel -> external app
-external app (curl n1@172.30.3) -> wg-server -> WG tunnel -> n1
+This example uses the [LinuxServer.io WireGuard container](https://github.com/linuxserver/docker-wireguard).
+Refer to its documentation for additional configuration options and container requirements.
+
+
+```mermaid
+flowchart LR
+    subgraph NSE2["NSE2 Host"]
+        n1["Node n1"]
+        n2["Node n2"]
+        server["WireGuard Server<br/>Transparent Proxy"]
+
+        n1 <--> server
+        n2 <--> server
+    end
+
+    subgraph External["External Host"]
+        client["WireGuard Client"]
+        app["External Application"]
+        client --- app
+    end
+
+    server <-->|"WireGuard Tunnel"| client
 ```
 
-The WireGuard server and application run on a separate host using the compose file in `server/`. After server startup the resulting configuration in `./server/runtime/config/peer_nse2client/peer_nse2client.conf` needs to be copied over to the client.
+Traffic addressed to either of the `wg-server` Docker addresses is DNATed by `server/setup-iptables.sh` to the external peer's tunnel address.
+The external application shares the WireGuard client's network namespace and therefore requires no additional routing configuration.
+
+This example supports one external WireGuard peer.
+
+### Configuration
+
+Before starting the server, review the following values in `compose.yml`:
+
+- `SERVERURL` must be an address through which the external host can reach the NSE2 host. Use `host.docker.internal` when testing both sides on the same machine.
+- `SERVERPORT` must match the UDP port published by the `wg-server` service.
+- `ALLOWEDIPS` must include every NSE2 network that the external service should be able to reach through the tunnel.
+
 
 ### Setup
 
-**1.** Create the environment file:
+Start the NSE2-side services:
 
 ```sh
-cp .env.example .env
-```
-
-Edit `.env` and set `SERVER_URL` to the public IP of the external host.
-
-**2.** On the external host, start the WireGuard server and the example application:
-
-```sh
-cd server
-cp ../.env .
 docker compose up -d
 ```
 
-This starts `wg-server` (LinuxServer.io image in server mode, auto-generating keys) and `app` (Alpine HTTP server on port 80, sharing the server's network namespace).
+The WireGuard server generates its keys and the external peer configuration
+under `server/runtime`. The generated client configuration is:
 
-**3.** Copy the generated client config to the NSE2 host:
-
-```sh
-# Same machine:
-cp server/runtime/config/peer_nse2client/peer_nse2client.conf runtime/wg-confs/wg0.conf
-
-# Different machine:
-scp server/runtime/config/peer_nse2client/peer_nse2client.conf \
-    user@nse2-host:scenarios/wireguard/runtime/wg-confs/wg0.conf
+```text
+server/runtime/peer_external/peer_external.conf
 ```
 
-**4.** Start the NSE2 scenario:
+Copy this file to `client/wg0.conf` on the external host:
 
 ```sh
-nse2_topo ./compose.yml
+scp server/runtime/peer_external/peer_external.conf \
+    user@external-host:/path/to/examples/wireguard/client/wg0.conf
 ```
+
+The configuration contains the external peer's private key and must not be
+committed to Git. Restrict its permissions on the external host:
+
+```sh
+chmod 600 client/wg0.conf
+```
+
+Start the WireGuard client and external application:
+
+```sh
+docker compose -f compose-client.yml up -d
+```
+
 
 ### Testing
 
-```sh
-# From n1 (on wg_n1 network):
-docker compose exec n1 curl http://172.30.0.2
-docker compose exec n1 curl http://wg-client
-
-# From n2 (on wg_n2 network):
-docker compose exec n2 curl http://172.31.0.2
-docker compose exec n2 curl http://wg-client
-
-# All should return: Hello from external WireGuard service!
-```
-
-From the server side, the app can reach NSE2 nodes through the tunnel:
+Check that the tunnel has established a handshake:
 
 ```sh
-docker compose -f ./server/compose.yml exec wg-server ping -c 2 172.30.0.3
+docker compose exec wg-server wg show
+docker compose -f compose-client.yml exec wg-client wg show
 ```
+
+The example application listens on port 80. Test it from both NSE2 nodes:
+
+```sh
+docker compose exec n1 curl --fail http://172.30.0.2
+docker compose exec n2 curl --fail http://172.31.0.2
+```
+
+Both requests should return:
+
+```text
+Hello from external WireGuard service!
+```
+
+Within the Compose networks, Docker DNS can resolve the WireGuard server by its service name.
+The application can therefore also be reached through `wg-server`:
+
+```sh
+docker compose exec n1 curl --fail http://wg-server
+docker compose exec n2 curl --fail http://wg-server
+```
+
+The generated client configuration routes the NSE2 Docker networks listed in `ALLOWEDIPS` through the WireGuard tunnel.
+It also uses the DNS server configured by the WireGuard container, allowing the external side to resolve and connect to `n1` and `n2` by name.
+
+```sh
+docker compose -f compose-client.yml exec wg-client ping n1
+docker compose -f compose-client.yml exec wg-client ping n2
+```
+

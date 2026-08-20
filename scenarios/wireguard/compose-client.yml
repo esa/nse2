@@ -12,7 +12,7 @@ services:
       PGID: ${PGID:-1000}
       TZ: ${TZ:-Etc/UTC}
     volumes:
-      - ./runtime/wg-confs:/config/wg_confs:ro
+      - ./client/wg0.conf:/config/wg_confs/wg0.conf:ro
       - /lib/modules:/lib/modules:ro
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1

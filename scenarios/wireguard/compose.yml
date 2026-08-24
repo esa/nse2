@@ -1,0 +1,86 @@
+name: wireguard-external-service-scenario
+
+services:
+  wg-server:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wg-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+      PEERS: external
+      PERSISTENTKEEPALIVE_PEERS: external
+
+      # Address and port written to the generated client configuration.
+      # Use host.docker.internal for same-host testing; otherwise, use an
+      # address reachable from the external host.
+      SERVERURL: host.docker.internal
+      SERVERPORT: 51820
+
+      # Networks the generated client configuration routes through WireGuard.
+      # Add any NSE2 network that the external service must be able to reach.
+      ALLOWEDIPS: 10.192.122.0/24,172.30.0.0/24,172.31.0.0/24
+
+      INTERNAL_SUBNET: 10.192.122.0
+    volumes:
+      - ./server/runtime:/config
+      - ./server/templates/server.conf:/config/templates/server.conf:ro
+      - ./server/setup-iptables.sh:/config/setup-iptables.sh:ro
+      - /lib/modules:/lib/modules:ro
+    ports:
+      # The published UDP port must match SERVERPORT.
+      - "51820:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped
+    networks:
+      wg_n1:
+        ipv4_address: 172.30.0.2
+      wg_n2:
+        ipv4_address: 172.31.0.2
+  n1:
+    container_name: n1
+    hostname: n1
+    cap_add:
+      - NET_ADMIN
+    privileged: 'true'
+    volumes:
+      - ./compose.yml:/compose.yml:ro
+    environment:
+      NODE_ID: 1
+      TYPE: Host
+    networks:
+      wg_n1:
+        ipv4_address: 172.30.0.3
+    entrypoint: sh -c "apk add iproute2 bash curl && tail -f /dev/null"
+    image: alpine
+
+  n2:
+    container_name: n2
+    hostname: n2
+    cap_add:
+      - NET_ADMIN
+    privileged: 'true'
+    volumes:
+      - ./compose.yml:/compose.yml:ro
+    environment:
+      NODE_ID: 2
+      TYPE: Host
+    networks:
+      wg_n2:
+        ipv4_address: 172.31.0.3
+    entrypoint: sh -c "apk add iproute2 bash curl && tail -f /dev/null"
+    image: alpine
+
+networks:
+  wg_n1:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  wg_n2:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24

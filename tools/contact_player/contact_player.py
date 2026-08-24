@@ -1,35 +1,52 @@
 #!/usr/bin/env python3
 
 
-from tc_netem import *
-from ccp import *
 import argparse
-import time
-import signal
-import sys
 import os
-import yaml
+import signal
 import socket
+import sys
+import time
+from itertools import combinations
+from pathlib import Path
+from typing import Any, TypedDict, cast
+
+import yaml
+
+from tools.contact_player.ccp import ContactState, CoreContact, CoreContactPlan
+from tools.contact_player.tc_netem import run_in_container, set_on_interface
 
 
-def load_scenario(path):
+class Service(TypedDict):
+    environment: list[str]
+    networks: dict[str, dict[str, str]]
+
+
+class Node(TypedDict):
+    eid: str
+    name: str
+    networks: dict[str, bool]
+    IPs: dict[str, str]
+
+
+def load_scenario(path: str | Path) -> dict[str, Node]:
     """
     Loads the docker compose scenario from the passed filepath.
     """
     print(f"Loading scenario from {path}.")
-    nodes: dict[str, dict] = {}
+    nodes: dict[str, Node] = {}
 
     with open(path) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+        config: dict[str, Any] = yaml.load(f, Loader=yaml.FullLoader)
         if "x-description" in config:
             print(f"Description: {config['x-description']}")
 
-        services: dict[str, dict[str, list[str]]] = config["services"]
+        services = cast(dict[str, Service], config["services"])
         for name, item in services.items():
             env_vars: list[str] = item["environment"]
             node_id = next(var for var in env_vars if var.startswith("NODE_ID"))
             node_eID = f"ipn:{node_id.split('=')[1]}.0"
-            new_node: dict[str, str] = {
+            new_node: Node = {
                 "eid": node_eID,
                 "name": name,
                 "networks": {},
@@ -50,7 +67,7 @@ def load_scenario(path):
 
 
 def find_common_subnet_between_nodes(
-    node1: str, node2: str, nodes: dict[str, dict[str, dict[str, str]]]
+    node1: str, node2: str, nodes: dict[str, Node]
 ) -> str | None:
     for k in nodes[node1].keys():
         if k in nodes[node2]:
@@ -58,14 +75,12 @@ def find_common_subnet_between_nodes(
     return None
 
 
-def get_dev_for_subnet(
-    node: str, subnet: str, nodes: dict[str, dict[str, dict[str, str]]]
-) -> str:
+def get_dev_for_subnet(node: str, subnet: str, nodes: dict[str, Node]) -> str:
     return nodes[node][subnet]["dev"]
 
 
 def get_network_for_interface(
-    node: str, interface: str, nodes: dict[str, dict[str, dict[str, str]]]
+    node: str, interface: str, nodes: dict[str, Node]
 ) -> str | None:
     for network, net_conf in nodes[node].items():
         if net_conf["dev"] == interface:
@@ -77,7 +92,7 @@ def get_network_for_interface(
 
 
 def contact_to_node_iface(
-    contact: CoreContact, nodes: dict[str, dict[str, dict[str, str]]]
+    contact: CoreContact, nodes: dict[str, Node]
 ) -> list[tuple[str, str]]:
     """
     Resolve a contact into the list of (node, interface) tuples, taking (a)symmetry of the contact into account.
@@ -130,10 +145,10 @@ def contact_to_node_iface(
 
 
 def set_link(
-    nodes: dict[str, dict[str, dict[str, str]]],
+    nodes: dict[str, Node],
     contact: CoreContact,
-    deactivate=False,
-    command="change",
+    deactivate: bool = False,
+    command: str = "change",
 ):
     loss = contact.loss
     if deactivate:
@@ -153,8 +168,22 @@ def set_link(
         )
 
 
-def get_pure_node_links(links: list) -> set:
-    pure_node_links = set()
+def get_pure_node_links(links: list[tuple[str, str, str]]) -> set[tuple[str, str, str]]:
+    """Resolves interface identifiers to node names and deduplicates links.
+
+    Converts links that reference specific network interfaces (e.g. ``dev:pcc_gs1``)
+    into plain node-to-node links, then deduplicates by sorting each pair
+    so that ``(pcc, gs1)`` and ``(gs1, pcc)`` are treated as the same link.
+
+    Args:
+        links: Raw link tuples of the form ``(endpoint_a, endpoint_b, link_type)``,
+            where either endpoint may be a ``dev:<node>_<node>`` interface reference.
+
+    Returns:
+        A set of deduplicated 3-tuples ``(node_a, node_b, link_type)`` with
+        node names sorted alphabetically and all interface references resolved.
+    """
+    pure_node_links: set[tuple[str, str, str]] = set()
     for l in links:
         # print("Link: ", l)
         nodes = [l[0], l[1]]
@@ -162,7 +191,6 @@ def get_pure_node_links(links: list) -> set:
 
         if l[0].startswith("dev:"):
             dev_str = l[0].split(":")[1]
-            other_node = l[1]
             components = dev_str.split("_")
             if len(components) >= 2:
                 if components[0] == l[1]:
@@ -175,7 +203,6 @@ def get_pure_node_links(links: list) -> set:
                 )
         if l[1].startswith("dev:"):
             dev_str = l[1].split(":")[1]
-            other_node = l[0]
             components = dev_str.split("_")
             if len(components) >= 2:
                 if components[0] == l[0]:
@@ -192,7 +219,16 @@ def get_pure_node_links(links: list) -> set:
     return pure_node_links
 
 
-def update_netmap(netmap: bool, scenario_name: str, links: list):
+def update_netmap(
+    netmap: bool, scenario_name: str, links: list[tuple[str, str, str]]
+) -> None:
+    """Writes or updates resolved node links to a .netmap file in the tmp/ directory.
+
+    Args:
+        netmap: When False, this function does nothing.
+        scenario_name: Used as the output filename (tmp/<scenario_name>.netmap).
+        links: Raw link tuples to resolve and write.
+    """
     if netmap:
         # check if tmp directory exists
         if not os.path.exists("tmp"):
@@ -224,8 +260,8 @@ def main() -> None:
     netmap = args.map_network
 
     mapping = {}
-    nodes: dict[str, dict[str, dict[str, str]]] = {}
-    links = []
+    nodes: dict[str, Node] = {}
+    links: list[tuple[str, str, str]] = []
 
     for k, v in scenario.items():
         # extract node number from key
@@ -242,21 +278,11 @@ def main() -> None:
 
     # check all node combinations for common subnets/links
 
-    for n1 in nodes.keys():
-        for n2 in nodes.keys():
-            if n1 == n2:
-                continue
-            link = find_common_subnet_between_nodes(n1, n2, nodes)
-            if link is not None:
-                # sort n1 and n2 to avoid duplicates
-                l = sorted([n1, n2])
-                l.append("-")
-                links.append(l)
-    links = list(set([tuple(l) for l in links]))
-
-    # print(mapping)
-    # print(nodes)
-    # print(links)
+    for n1, n2 in combinations(nodes, 2):
+        if find_common_subnet_between_nodes(n1, n2, nodes) is None:
+            continue
+        a, b = sorted((n1, n2))
+        links.append((a, b, "-"))
 
     scenario_name = os.path.basename(args.scenario)
     scenario_name = os.path.splitext(scenario_name)[0]

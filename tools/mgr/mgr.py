@@ -301,8 +301,10 @@ async def draw_links(links_area: ui.scroll_area, compose_file: str):
                                     print(e)
 
                 bg = "#f3f4f6" if is_active else "#fde8e8"
-                with ui.row().classes("place-items-center w-full").style(
-                    f"background-color: {bg}"
+                with (
+                    ui.row()
+                    .classes("place-items-center w-full")
+                    .style(f"background-color: {bg}")
                 ):
                     if is_active:
                         ui.icon("cloud_done").classes("text-green-500").style(
@@ -347,7 +349,6 @@ def draw_map(map_area: ui.scroll_area):
         map_area.clear()
 
         with ui.matplotlib(figsize=(8, 5)).figure as fig:
-
             # x = np.linspace(0.0, 5.0)
             # y = np.cos(2 * np.pi * x) * np.exp(-x)
             ax = fig.gca()
@@ -437,13 +438,6 @@ def ui_main(compose_file: str, contact_plan: str):
         5.0,
         lambda: linkstate_timer(compose_file, links_area, map_area),
     )
-    ui.run(
-        reload=True,
-        title="Docker TestBed Manager",
-        show=False,
-        port=8800,
-        host="127.0.0.1",
-    )
 
 
 def main():
@@ -469,7 +463,18 @@ def main():
     # s = time.time()
     # print(get_container_interfaces_parallel(compose_file))
     # print(f"Elapsed time: {time.time() - s}")
-    ui_main(compose_file, contact_plan)
+
+    def build_page():
+        ui_main(compose_file, contact_plan)
+
+    ui.run(
+        root=build_page,
+        reload=False,
+        title="Docker TestBed Manager",
+        show=False,
+        port=8800,
+        host="127.0.0.1",
+    )
 
 
 if __name__ in {"__main__", "__mp_main__"}:

@@ -65,7 +65,7 @@ def main() -> None:
 
     def add_marker(x: int, y: int, label: str, color: str):
         marker = f'<circle cx="{x}" cy="{y}" r="15" fill="none" stroke="{color}" stroke-width="4" />'
-        marker += f'<text x="{x}" y="{y+40}" fill="{color}" font-size="20" text-anchor="middle">{label}</text>'
+        marker += f'<text x="{x}" y="{y + 40}" fill="{color}" font-size="20" text-anchor="middle">{label}</text>'
         return marker
 
     def add_link(
@@ -73,40 +73,9 @@ def main() -> None:
     ) -> str:
         if dashed:
             now = int(time.time() * 10) % 5
-            return f'<line x1="{node1["x"]}" y1="{node1["y"]}" x2="{node2["x"]}" y2="{node2["y"]}" stroke="{color}" stroke-width="4" stroke-dasharray="5,5" stroke-dashoffset="{now*2}" />'
+            return f'<line x1="{node1["x"]}" y1="{node1["y"]}" x2="{node2["x"]}" y2="{node2["y"]}" stroke="{color}" stroke-width="4" stroke-dasharray="5,5" stroke-dashoffset="{now * 2}" />'
         else:
             return f'<line x1="{node1["x"]}" y1="{node1["y"]}" x2="{node2["x"]}" y2="{node2["y"]}" stroke="{color}" stroke-width="4"/>'
-
-    def mouse_handler(e: events.MouseEventArguments):
-        color = "SkyBlue" if e.type == "mousedown" else "SteelBlue"
-        ii.content += f'<circle cx="{e.image_x}" cy="{e.image_y}" r="15" fill="none" stroke="{color}" stroke-width="4" />'
-        ui.notify(f"{e.type} at ({e.image_x:.1f}, {e.image_y:.1f})")
-        print(f"{e.type} at ({e.image_x:.1f}, {e.image_y:.1f})")
-
-    def load_netmap():
-        nonlocal links
-        links = []
-        if not netmap_filename:
-            return
-        with open(netmap_filename) as f:
-            for line in f:
-                node1, link_type, node2 = line.split()
-                links.append((node1, node2, link_type))
-
-    def draw_netmap():
-        content = ""
-
-        for node in config["nodes"]:
-            content += add_marker(node["x"], node["y"], node["name"], node["color"])
-
-        nonlocal links
-
-        for node1, node2, link_type in links:
-            node1 = next((node for node in config["nodes"] if node["name"] == node1), None)
-            node2 = next((node for node in config["nodes"] if node["name"] == node2), None)
-            content += add_link(node1, node2, dashed=(link_type == "."))
-
-        ii.content = content
 
     def attach_container_to_xterm(terminal: Xterm, node: Node) -> None:
         """Attaches a xterm terminal in the UI to /bin/bash in a docker container.
@@ -241,55 +210,98 @@ def main() -> None:
             # clicking a tab also opens the panel if collapsed
             tabs.on("update:model-value", lambda _: open_panel())
 
-    links = []
+    def build_page() -> None:
+        links = []
 
-    with ui.card().classes("no-shadow self-center w-[1200px]") as card:
-        ui.markdown(
-            f"""
-        ## {config["title"]}
+        def mouse_handler(e: events.MouseEventArguments):
+            color = "SkyBlue" if e.type == "mousedown" else "SteelBlue"
+            ii.content += f'<circle cx="{e.image_x}" cy="{e.image_y}" r="15" fill="none" stroke="{color}" stroke-width="4" />'
+            ui.notify(f"{e.type} at ({e.image_x:.1f}, {e.image_y:.1f})")
+            print(f"{e.type} at ({e.image_x:.1f}, {e.image_y:.1f})")
 
-        *{config["description"]}*
+        def load_netmap():
+            links.clear()
+            if not netmap_filename:
+                return
+            with open(netmap_filename) as f:
+                for line in f:
+                    node1, link_type, node2 = line.split()
+                    links.append((node1, node2, link_type))
 
-                    """
-        )
-        with ui.row():
-            ii = ui.interactive_image(
-                background,
-                content="",
-                on_mouse=mouse_handler,
-                events=["mousedown", "mouseup"],
-                cross=True,
+        def draw_netmap():
+            content = ""
+
+            for node in config["nodes"]:
+                content += add_marker(node["x"], node["y"], node["name"], node["color"])
+
+            for node1_name, node2_name, link_type in links:
+                node1 = next(
+                    (node for node in config["nodes"] if node["name"] == node1_name),
+                    None,
+                )
+                node2 = next(
+                    (node for node in config["nodes"] if node["name"] == node2_name),
+                    None,
+                )
+
+                if node1 is not None and node2 is not None:
+                    content += add_link(node1, node2, dashed=(link_type == "."))
+
+            ii.content = content
+
+        with ui.card().classes("no-shadow self-center w-[1200px]"):
+            ui.markdown(
+                f"""
+            ## {config["title"]}
+
+            *{config["description"]}*
+
+                        """
             )
-        log = ui.log().classes("w-full")
+            with ui.row():
+                ii = ui.interactive_image(
+                    background,
+                    content="",
+                    on_mouse=mouse_handler,
+                    events=["mousedown", "mouseup"],
+                    cross=True,
+                )
+            log = ui.log().classes("w-full")
 
-    build_terminal_footer(config["nodes"])
+        build_terminal_footer(config["nodes"])
 
-    log_file = "tmp/main.log"
-    f = subprocess.Popen(
-        ["stdbuf", "-oL", "tail", "-F", log_file, "-n", "+0"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        log_file = "tmp/main.log"
+        f = subprocess.Popen(
+            ["stdbuf", "-oL", "tail", "-F", log_file, "-n", "+0"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        p = select.poll()
+        p.register(f.stdout)
+
+        log.push("Network Visualization started")
+        log.push(f"Waiting for log messages in {log_file}...")
+
+        def check_logfile():
+            if p.poll(0.1):
+                line = f.stdout.readline().decode("utf-8").strip()
+                log.push(line)
+
+        ui.timer(interval=0.1, callback=check_logfile, once=False)
+        # spawn background worker to follow tmp/main.log and append new lines to log widget
+
+        ui.timer(interval=1, callback=load_netmap, once=False)
+        ui.timer(interval=0.1, callback=draw_netmap, once=False)
+        dark = ui.dark_mode()
+        dark.enable()
+
+    ui.run(
+        root=build_page,
+        title="Network Visualization",
+        reload=False,
+        host="127.0.0.1",
+        show=False,
     )
-    p = select.poll()
-    p.register(f.stdout)
-
-    log.push("Network Visualization started")
-    log.push(f"Waiting for log messages in {log_file}...")
-
-    def check_logfile():
-        if p.poll(0.1):
-            line = f.stdout.readline().decode("utf-8").strip()
-            log.push(line)
-
-    ui.timer(interval=0.1, callback=check_logfile, once=False)
-    # spawn background worker to follow tmp/main.log and append new lines to log widget
-
-    ui.timer(interval=1, callback=load_netmap, once=False)
-    ui.timer(interval=0.1, callback=draw_netmap, once=False)
-    dark = ui.dark_mode()
-    dark.enable()
-
-    ui.run(title="Network Visualization", reload=True, host="127.0.0.1", show=False)
 
 
 if __name__ == "__main__":

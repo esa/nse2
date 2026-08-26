@@ -6,7 +6,7 @@ This section provides detailed instructions on how to install NSE2 on your syste
 Before installing NSE2, ensure that you have the following prerequisites:
 
 * A compatible operating system (Linux, macOS, or Windows)
-* Python 3.10 or higher
+* Python 3.11 or higher
 * pip (Python package installer)
 * Git (for cloning the repository)
 * Docker (for containerized environments)
@@ -19,21 +19,22 @@ NOTE: In theory, podman can be used instead of Docker, but it is not tested. Als
 
 . Clone the NSE2 repository from GitHub: `git clone https://github.com/esa/nse2.git`
 . Navigate to the NSE2 directory: `cd nse2`
-. Create a virtual environment: `python3 -m venv .venv`
-. Activate the virtual environment and set up tools in your PATH. We recommend using `load_env.sh` before installing the dependencies:
+. Create and activate a virtual environment, then install the project and its dependencies:
 +
 [source,bash]
 ----
-source load_env.sh
-pip install -r requirements.txt
-----
-+
-**Alternative approach using symlinks:**
-If you prefer not to source `load_env.sh` in every new shell session, you can manually activate the environment, install the dependencies, and use the `install_symlinks.sh` script to install all tools into your `.venv/bin` directory:
-+
-[source,bash]
-----
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-./install_symlinks.sh
+pip install ".[dev]"
+----
++
+All `nse2_*` tools and helpers are installed into the virtual environment and available on PATH whenever the venv is active. `PYTHONPATH` is handled automatically.
++
+TIP: For pinning dependencies to the exact versions tested in this repository, add `-c constraints.txt` to the `pip install` command.
+
+. **For development:** use an editable install so that changes to the source code take effect immediately without reinstalling:
++
+[source,bash]
+----
+pip install -e ".[dev]"
 ----

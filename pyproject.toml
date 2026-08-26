@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nse2"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "matplotlib",
+    "networkx",
+    "nicegui>=3.3.0",
+    "pyaml",
+    "python-dateutil",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "basedpyright>=1.39",
+]
+
+[project.scripts]
+nse2_contacts   = "tools.contact_player.contact_player:main"
+nse2_cmd        = "tools.bin.nse2_cmd:main"
+nse2_mgr        = "tools.mgr.mgr:main"
+nse2_netviz     = "tools.netviz.netviz:main"
+csv_to_ccp      = "tools.helpers.csv_to_ccp:main"
+csv_to_compose  = "tools.helpers.csv_to_compose:main"
+random_contacts = "tools.helpers.random_contacts:main"
+
+[tool.setuptools]
+script-files = [
+    "tools/bin/nse2_actions",
+    "tools/bin/nse2_sh",
+    "tools/bin/nse2_topo",
+]
+
+[tool.setuptools.packages.find]
+include = ["tools", "tools.*"]
+
+[tool.basedpyright]
+reportUnusedCallResult = false
+reportImplicitStringConcatenation = false

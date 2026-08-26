@@ -7,55 +7,47 @@ In this scenario the satellite passes are frequent and data can be downlinked at
 
 ## Topology
 
-```mermaid
-flowchart LR
-    style Earth rx:20,ry:20
-
-    MCC(fa:fa-computer Mission control centre<br>ipn:1.0)
-    PCC(fa:fa-computer Payload control centre<br>ipn:100.0)
-    GS1(fa:fa-satellite-dish GS1<br>ipn:20.0)
-    GS2(fa:fa-satellite-dish GS2<br>ipn:30.0)
-    EOSAT(fa:fa-satellite eosat<br>ipn:50.0)
-
-    subgraph Earth
-      MCC --- GS1
-      MCC --- GS2
-      PCC --- GS1
-      PCC --- GS2
-      
-    end
-    GS1 -.- EOSAT
-    GS2 -.- EOSAT
-```
+![leo topo](./extras/leo.png)
 
 
 ## Datarates
-|  from\to     | Mission Control Centre | Payload Control Centre  | Ground Station | Satellite |
-| -            | -                      | -                       | -              | -         |
-| __Mission Control Centre__ | /        | 0                       | 100            | 0         |
-| __Payload Control Centre__ | 0        | /                       | 100            | 0         |
-| __Ground Station__ | 100              | 100                     | /              | 64Kbps    |
-| __Satellite__ | 0                     | 0                       | 8Mbps/10Gbps   | /         |  
+|  from\to                   | Mission Control Centre | Payload Control Centre  | Ground Station 1 | Ground Station 2 | Satellite |
+| -                          | -                      | -                       | -                |                  | -         |
+| __Mission Control Centre__ | /                      | 0                       | 100 Mbps         | 100 Mbps         | 0         |
+| __Payload Control Centre__ | 0                      | /                       | 100 Mbps         | 1000 Mbps        | 0         |
+| __Ground Station 1__       | 100 Mbps               | 100 Mbps                | /                | 0                | 64 kbps   |
+| __Ground Station 2__       | 100 Mbps               | 100 Mbps                | 0                | /                | 0         |
+| __Satellite__              | 0                      | 0                       | 8Mbps            | 1000 Mbps        | /         |  
 
-- TC Uplink: 64 kBits
+- TC Uplink: 64 kbps
 - HK TM Downlink: 8 Mbps
-- Payload TM Downlink: 10 Gbits
+- Payload TM Downlink: 1 Gbps
 
-## Datarates scaled for simulation
-|  from\to     | Mission Control Centre | Payload Control Centre  | Ground Station | Satellite |
-| -            | -                      | -                       | -              | -         |
-| __Mission Control Centre__ | /        | 0                       | 10            | 0         |
-| __Payload Control Centre__ | 0        | /                       | 10            | 0         |
-| __Ground Station__ | 10              | 10                     | /              | 0.1    |
-| __Satellite__ | 0                     | 0                       | 1 (HK), 1000 (Payload)  | /         |  
 
-## Contacts
+## Contact Plan and Compose File
 
-For this scenario, two contact plans are provided:
-- [eo.testing.contacts.ccp](eo.testing.contacts.ccp): this simple plan is just alternating between both ground stations with 30s of no contact in between.
-- [eo.realtime.contacts.ccp](eo.realtime.contacts.ccp): this plan has realistic contacts and runs in realtime, thus, long delays between contacts.
+The contact plan [contacts.ccp](contacts.ccp) is generated from
+`actual_contacts.csv` via `csv_to_ccp.py`. The compose file
+[compose.yml](compose.yml) is generated from the same CSV via
+`csv_to_compose.py`.
 
-By default the `start_net.sh` script runs the testing contacts but you can provide another contact plan as first parameter.
+The CSV-to-Compose conversion uses `nodes.json` for node metadata and strips
+the `eo` prefix from node names. The generated contact plan also strips the
+`eo` prefix. Both generated files contain the date and command used to create
+them.
+
+For short test runs, [contacts_testing.ccp](contacts_testing.ccp) is derived
+from `contacts.ccp` with `random-contacts.py`:
+
+```bash
+random-contacts.py contacts.ccp contacts_testing.ccp \
+  --length 120 --min-contact 30 --max-contact 30 --seed 0
+```
+
+This preserves fixed links and dynamic link properties while replacing the
+original contact windows with one randomized 30-second window per unique
+dynamic direction. The `start_net.sh` script uses `contacts.ccp` by default,
+but accepts another contact plan as its first argument.
 
 ## Actions
 
@@ -67,6 +59,6 @@ An [example action file](eo.actions) is provided. It just starts a few processes
 2. if you want fluctuating connectivity and bandwidth limitations: `./start_net.sh`
 3. start the automatic actions on the nodes: `./start_actions.sh`
 4. *OPTIONALLY: start the network visualization: `./start_viz.sh`*
-5. *OPTIONALLY: start the docker test bed manager: `nse2_mgr eo.compose.yml eo.testing.contacts.ccp`*
+5. *OPTIONALLY: start the docker test bed manager: `nse2_mgr compose.yml contacts.ccp`*
 
 You can get an interactive shell on any of the nodes through docker: `docker exec -it <node> bash` or `nse2_sh <node>`

@@ -1,9 +1,9 @@
 #!/bin/sh
 
-CONTACTS=eo.testing.contacts.ccp
+CONTACTS=contacts.ccp
 
 if [ -n "$1" ]; then
   CONTACTS="$1"
 fi
 
-nse2_contacts -m eo.compose.yml $CONTACTS
+nse2_contacts -m compose.yml $CONTACTS

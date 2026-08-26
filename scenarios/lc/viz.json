@@ -1,38 +1,46 @@
 {
   "title": "Lunar Communications",
-  "description": "The Lunar Communications scenario with 13 nodes.",
+  "description": "The Lunar Communications scenario with 14 nodes.",
   "background": "extras/background.jpg",
-  "links": "tmp/lc.compose.netmap",
+  "links": "tmp/compose.netmap",
   "nodes": [
     {
-      "name": "rcc1",
-      "x": 225.0,
-      "y": 41.0,
+      "name": "lrec1",
+      "x": 215.0,
+      "y": 140.0,
       "e_id": "ipn:100.0",
       "color": "#fc7703",
       "type": "computer"
     },
     {
-      "name": "gs1",
-      "x": 349.0,
-      "y": 120.0,
+      "name": "lgs1",
+      "x": 290.0,
+      "y": 65.0,
       "e_id": "ipn:110.0",
       "color": "#fc7703",
       "type": "computer"
     },
     {
-      "name": "rcc2",
-      "x": 225.0,
-      "y": 220.0,
+      "name": "lrec2",
+      "x": 215.0,
+      "y": 250.0,
       "e_id": "ipn:200.0",
       "color": "#0384fc",
       "type": "computer"
     },
     {
-      "name": "gs2",
-      "x": 304.0,
-      "y": 282.0,
+      "name": "lgs2",
+      "x": 365.0,
+      "y": 195.0,
       "e_id": "ipn:210.0",
+      "color": "#0384fc",
+      "type": "computer"
+    },
+    {
+      "name": "lgs3",
+      "x": 290.0,
+      "y": 325.0,
+      "e_id": "ipn:211.0",
       "color": "#0384fc",
       "type": "computer"
     },
@@ -45,15 +53,15 @@
       "type": "computer"
     },
     {
-      "name": "base1",
-      "x": 903.0,
-      "y": 321.0,
+      "name": "lb",
+      "x": 855.0,
+      "y": 280.0,
       "e_id": "ipn:11.0",
       "color": "#e3e340",
       "type": "computer"
     },
     {
-      "name": "user1",
+      "name": "lgwu",
       "x": 606.0,
       "y": 491.0,
       "e_id": "ipn:31.0",
@@ -61,7 +69,7 @@
       "type": "computer"
     },
     {
-      "name": "rover1",
+      "name": "lrov",
       "x": 932.0,
       "y": 247.0,
       "e_id": "ipn:21.0",
@@ -69,31 +77,31 @@
       "type": "computer"
     },
     {
-      "name": "u1cc",
-      "x": 89.0,
-      "y": 175.0,
+      "name": "lucc",
+      "x": 65.0,
+      "y": 195.0,
       "e_id": "ipn:30.0",
       "color": "#a832a6",
       "type": "computer"
     },
     {
-      "name": "b1cc",
-      "x": 106.0,
-      "y": 72.0,
+      "name": "lbcc",
+      "x": 140.0,
+      "y": 65.0,
       "e_id": "ipn:10.0",
       "color": "#e3e340",
       "type": "computer"
     },
     {
-      "name": "r1cc",
-      "x": 134.0,
-      "y": 288.0,
+      "name": "lrcc",
+      "x": 140.0,
+      "y": 325.0,
       "e_id": "ipn:20.0",
       "color": "#32a834",
       "type": "computer"
     },
     {
-      "name": "relay1",
+      "name": "lre1",
       "x": 826.0,
       "y": 92.0,
       "e_id": "ipn:120.0",
@@ -101,7 +109,7 @@
       "type": "computer"
     },
     {
-      "name": "relay2",
+      "name": "lre2",
       "x": 840.0,
       "y": 447.0,
       "e_id": "ipn:221.0",

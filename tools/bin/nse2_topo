@@ -32,7 +32,7 @@ COMPOSE_FILE=$1
 echo "Starting containers and network topology for scenario $COMPOSE_FILE"
 
 # Ensure proper cleanup on exit or abort
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 $DOCKERCMD compose -f $COMPOSE_FILE up --force-recreate --build --remove-orphans -d
 

@@ -11,30 +11,23 @@
 
 ## Installation
 
-To install `NSE2`, you need to set up a Python virtual environment, install the required dependencies, and make the `nse2` tools accessible in your PATH.
+Create a virtual environment and install the project:
 
-First, create a clean virtual environment:
-```
-$ python3 -m venv .venv
-```
-
-The recommended approach to activate the environment and set up your PATH is to source `load_env.sh`. Do this before installing the dependencies:
-```
-$ source load_env.sh
-Activating virtual environment
-Adding tools/bin and tools/helpers to PATH
-$ pip3 install -r requirements.txt
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install .
 ```
 
-**Alternative approach using symlinks:**
-If you prefer not to source `load_env.sh` every time you start a new shell session, you can manually activate the environment, install the dependencies, and use the `install_symlinks.sh` script. This script installs all tools into your `.venv/bin` directory (or a user-supplied path), so they are automatically available whenever the virtual environment is active:
-```
-$ source .venv/bin/activate
-$ pip3 install -r requirements.txt
-$ ./install_symlinks.sh
+When developing, use an editable install so changes take effect immediately:
+
+```sh
+pip install -e ".[dev]"
 ```
 
-Afterwards, all `nse2` tools are available to run network simulations.
+To pin dependencies to the exact versions tested in this repo (recommended), add `-c constraints.txt` to either command.
+
+Once installed, all `nse2_*` tools and helpers are available on PATH whenever the venv is active.
 
 ## Documentation
 

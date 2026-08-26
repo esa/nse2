@@ -1,7 +1,0 @@
-matplotlib==3.10.9
-networkx==3.6.1
-nicegui==3.13.0
-pyaml==26.2.1
-python-dateutil==2.9.0.post0
-pytest==9.1.1
-

@@ -4,7 +4,7 @@ Scenario: Lunar Communication
 ## Scenario Definition
 The Lunar Communication scenario has two service providers with similar assets. Each service provider has 1 control centre, 1 relay control centre, 1 GS, and 1 Relay and 1 Lunar asset. In addition the lunar gateway is orbiting the moon, able to communicate with all ground stations and relays as well as lunar assets. There are three "end users" in the scenario, a rover and base on the lunar surface as well as a user in the orbiting gateway. All of them have their own control centers on earth.
 
-Further information about the scenario, including data rates, topology and background on the communication planning can be found in the [lunar-communications scenario description](https://github.com/esa/ccsds-dtn-reference-scenarios/blob/main/lunar-communication/v1.0/Lunar%20Communication%20Scenario.adoc) in the [ccsds-dtn-reference-scenarios repository](https://github.com/esa/ccsds-dtn-reference-scenarios).
+Further information about the scenario, including data rates, topology and background on the communication planning can be found in the [lunar-communications scenario description](https://github.com/esa/ccsds-dtn-reference-scenarios/blob/release/lunar-communication/v1.0.1/Lunar%20Communication%20Scenario.adoc) in the [ccsds-dtn-reference-scenarios repository](https://github.com/esa/ccsds-dtn-reference-scenarios).
 
 
 ## Topology

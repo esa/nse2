@@ -17,7 +17,7 @@ In this scenario the satellite passes are frequent and data can be downlinked at
 | __Payload Control Centre__ | 0                      | /                       | 100 Mbps         | 1000 Mbps        | 0         |
 | __Ground Station 1__       | 100 Mbps               | 100 Mbps                | /                | 0                | 64 kbps   |
 | __Ground Station 2__       | 100 Mbps               | 100 Mbps                | 0                | /                | 0         |
-| __Satellite__              | 0                      | 0                       | 8Mbps            | 1000 Mbps        | /         |  
+| __Satellite__              | 0                      | 0                       | 8Mbps            | 10 Gbps          | /         |  
 
 - TC Uplink: 64 kbps
 - HK TM Downlink: 8 Mbps

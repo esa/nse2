@@ -2,87 +2,25 @@ Scenario: Mars Communication
 ============================
 
 ## Scenario Definition
-The mars communication scenario keeps a similar infrastructure to the [lunar scenario](../lc), however relays cannot communicate and links have much larger delays.
+The Mars communication scenario keeps a similar topology to the Lunar scenario, however relays cannot communicate between each others and links have much larger delays between Earth and Mars. In this scenario we have two service providers, with respectively one and two relay orbiters. Both providers have a low altitude orbiter and the second provider a high altitude one as well that provides coverage for both rovers. In this scenario the contacts are much more sparse and shorter in time, providing a more challenging communication environment. Direct links with Earth are not available, and relays do not communicate between each other to relay data, as the current Mars Orbiters are alos not communicating with each other. 
+
+Further information about the scenario, including data rates, topology and background on the communication planning can be found in the [mars-communications scenario description](https://github.com/esa/ccsds-dtn-reference-scenarios/blob/release/mars-communication/v1.0.1/Mars%20Communication%20Scenario.adoc) in the [ccsds-dtn-reference-scenarios repository](https://github.com/esa/ccsds-dtn-reference-scenarios).
 
 
 ## Topology
-:::mermaid
-flowchart LR
-    style Earth rx:50,ry:50
-    style Mars rx:50,ry:50
+![mc topo](./extras/mc.png)
 
-    payload1(fa:fa-computer Rover 1<br>Control Centre<br>ipn:10.0)
-    rover1(fa:fa-robot Rover 1<br>ipn:15.0)
+## Contact Plan and Compose File
 
-    rcc1(fa:fa-server Relay Control Centre 1<br>ipn:100.0)
-    gs1(fa:fa-satellite-dish GS 1<br>ipn:110.0)
-    r1(fa:fa-satellite Relay 1<br>ipn:120.0)
-    
-    payload2(fa:fa-computer Rover 2<br>Control Centre<br>ipn:20.0)
-    rover2(fa:fa-robot Rover 2<br>ipn:25.0)
-    
-    rcc2(fa:fa-server Relay Control Centre 2<br>ipn:200.0)
-    gs2(fa:fa-satellite-dish GS 2<br>ipn:210.0)
-    r2(fa:fa-satellite Relay 2<br>ipn:220.0)
-    r3(fa:fa-satellite Relay 3<br>ipn:221.0)
+The contact plan [contacts.ccp](contacts.ccp) is generated from `actual_contacts.csv` via `csv_to_ccp.py`.
 
-    subgraph Earth
-      payload1 --- rcc1
-      payload1 --- rcc2
-
-      subgraph Service provider 1
-        rcc1 --- gs1
-      end
-      rcc1 --- gs2
-
-      payload2 --- rcc2
-      payload2 --- rcc1
-
-      subgraph Service provider 2
-        rcc2 --- gs2
-        rcc2 --- gs1
-      end
-      
-      rcc1 --- rcc2
-    end
-
-    gs1 -.- r1
-    gs2 -.- r2
-    gs2 -.- r3
-
-
-    r1 -.- rover1
-    r1 -.- rover2
-
-    r2 -.- rover1
-    r2 -.- rover2
-    
-    r3 -.- rover1
-    r3 -.- rover2
-    
-    subgraph Mars
-      rover1
-      rover2
-    end
-:::
-
-## Datarates
-
-
-|  from\to     | User Control Centre | Relay Control Centre  | Ground Station | Relay | Mars Asset |
-| -            | -              | -                     | -              | -     | -           |
-| __User Control Centre__ | /   | 100                   | 100            | 0     | 0           |
-| __Relay Control Centre__ | 100| /                     | 100            | 0     | 0           |
-| __Ground Station__ | 100      | 100                   | /              | 30    | 30          |      
-| __Relay__ | 0                 | 0                     | 100            | 0   | 100         | 
-| __Mars Asset__ | 0           | 0                     | 100            | 15    | /
-
+The compose file [compose.yml](compose.yml) is generated from the same CSV via `csv_to_compose.py`.
 
 ## Docker: Running the Scenario
 
 1. start the docker containers and setup the network: `./start_topo.sh`
 2. if you want fluctuating connectivity and bandwidth limitations: `./start_net.sh`
 3. *OPTIONALLY: start the network visualization: `./start_viz.sh`*
-4. *OPTIONALLY: start the docker test bed manager: `nse2_mgr mc.compose.yml mc.contacts.ccp`*
+4. *OPTIONALLY: start the docker test bed manager: `nse2_mgr compose.yml contacts.ccp`*
 
 You can get an interactive shell on any of the nodes through docker: `docker exec -it <node> bash` or `nse2_sh <node>`

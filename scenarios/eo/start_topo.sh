@@ -1,3 +1,3 @@
 #!/bin/sh
 
-nse2_topo ./eo.compose.yml
+nse2_topo ./compose.yml

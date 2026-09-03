@@ -2,7 +2,7 @@
   "title": "Earth Observation",
   "description": "A minimal earth observation scenario.",
   "background": "extras/background.jpg",
-  "links": "tmp/eo.compose.netmap",
+  "links": "tmp/compose.netmap",
   "nodes": [
     {
       "name": "pcc",
@@ -33,7 +33,7 @@
       "color": "SkyBlue"
     },
     {
-      "name": "eosat",
+      "name": "sat",
       "type": "satellite_alt",
       "x": 200,
       "y": 400,

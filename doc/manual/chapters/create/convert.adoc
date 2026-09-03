@@ -1,1 +1,89 @@
-**TODO** 
+== Generate Files from CSV
+
+The helper scripts in `tools/helpers` can generate a contact plan and a
+Docker Compose file from the same contact CSV.  The CSV contains one link
+per row with the columns `source`, `destination`, `start`, `end`,
+`bandwidth`, `delay`, and an optional label.  The scripts skip the header
+row.
+
+=== Generate a Contact Plan
+
+Use `csv_to_ccp.py` to create a `.ccp` file:
+
+[source,bash]
+----
+csv_to_ccp.py contacts.csv --output contacts.ccp
+----
+
+Options:
+
+* `--output`, `-o`: output file; `-` (the default) writes to standard output.
+* `--strip-prefix PREFIX`: remove `PREFIX` from source and destination names.
+* `--speedup FACTOR`: divide contact timestamps by `FACTOR`, useful for a
+  shorter test run. The default is `1`.
+* `--bw-scale FACTOR` (also `--bandwidth-scale`): multiply bandwidths by
+  `FACTOR`. The default is `1`.
+
+Rows with a start time of `0` and an end time of `-1` become fixed links.
+Matching reverse-direction rows are combined into a symmetric link using
+`=`.  When a node pair has multiple labels, the label is used to generate a
+dedicated destination interface such as `dev:n1_n2_payload`.
+
+=== Generate a Compose File
+
+Use `csv_to_compose.py` with the same CSV:
+
+[source,bash]
+----
+csv_to_compose.py contacts.csv --output compose.yml
+----
+
+Options:
+
+* `--output`, `-o`: output file; `-` writes to standard output.
+* `--strip-prefix PREFIX`: remove `PREFIX` from node names.
+* `--nodes FILE` (also `--mapping`): JSON file containing node labels, names,
+  and IDs.
+* `--name NAME`, `-n`: Compose project name.
+* `--image IMAGE`, `-i`: container image; the default is `alpine`.
+* `--entrypoint COMMAND`, `-e`: container entrypoint. The default installs
+  `iproute2` and `bash`, then keeps the container running.
+* `--build PATH`, `-b`: use a build directory instead of an image.
+* `--base-subnet PREFIX`: first two subnet octets; the default is `172.33`.
+* `--export-graphml FILE`, `-g`: additionally export the topology as GraphML.
+* `--node-volumes DIRECTORY`: create per-node data directories and mount them
+  into the containers.
+* `--mount-compose`: mount the generated Compose file read-only in each
+  container.
+
+The generated Compose topology uses one Docker bridge network for each link.
+Every such network connects exactly two nodes; this keeps each link isolated
+and gives both endpoints a predictable interface.  Network names are based on
+the sorted node names, and, when several differently labelled links connect
+the same pair, also include the link label.  Direction suffixes `_ul` and
+`_dl` are removed and `high`/`low` are shortened to `hi`/`lo`.
+
+Linux limits network interface names to 15 characters including the
+terminating null byte.  Therefore names with 14 or more characters are
+replaced by the first 12 characters of their MD5 hash, with a warning printed
+by the script.  Use `--strip-prefix` when node labels share a long common
+prefix, for example:
+
+[source,bash]
+----
+csv_to_compose.py --strip-prefix eo --nodes nodes.json \
+  --output compose.yml actual_contacts.csv
+----
+
+Removing the prefix can keep the generated network and interface names short
+and human-readable instead of forcing the hash fallback.
+
+Both scripts write the generation date and complete command to the generated
+file.  A typical scenario therefore uses the same CSV to generate both files:
+
+[source,bash]
+----
+csv_to_ccp.py --strip-prefix eo --output contacts.ccp actual_contacts.csv
+csv_to_compose.py --strip-prefix eo --nodes nodes.json \
+  --name earth-orbit --output compose.yml actual_contacts.csv
+----

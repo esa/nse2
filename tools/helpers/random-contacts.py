@@ -1,72 +1,99 @@
 #!/usr/bin/env python3
 
+"""Randomize contact windows in an existing CCP file.
+
+Fixed links are preserved verbatim.  For each unique dynamic contact
+direction in the original file, random start/end times are generated
+while keeping the per-direction link properties unchanged.
+"""
+
 import argparse
-import csv
+import datetime
 import random
+import sys
 
-START_TIME_DEFAULT = 0
-END_TIME_DEFAULT = 60
-MIN_CON_LENGTH_DEFAULT = 5
-MAX_CON_LENGTH_DEFAULT = 15
+from tools.contact_player.ccp import LinkProperties, RawCcpContactPlan
 
-parser = argparse.ArgumentParser()
-parser.add_argument("contacts", help="The contacts file to create short contacts from.")
-parser.add_argument("output", help="The output file.")
-parser.add_argument("-l", "--length",
-                    help="The length of the contact plan in seconds (default=60)",
-                    default=END_TIME_DEFAULT,
-                    type=int)
-parser.add_argument("-min",
-                    help="The minimum contact length in seconds (default=5)",
-                    default=MIN_CON_LENGTH_DEFAULT,
-                    type=int)
-parser.add_argument("-max",
-                    help="The maximum contact length in seconds (default=15)",
-                    default=MAX_CON_LENGTH_DEFAULT,
-                    type=int)
 
-args = parser.parse_args()
-contacts_file = args.contacts
-output_file = args.output
-end_time = args.length
-min_con_length = args.min
-max_con_length = args.max
+def _fmt(v: float) -> str:
+    """Format a float: 100.0 -> '100', 0.5 -> '0.5'."""
+    return str(int(v)) if v == int(v) else str(v)
 
-unique_pairs = set()
-fixed_contacts = []
 
-with open(contacts_file) as file:
-    reader = csv.reader(file, delimiter=' ')
-    for row in reader:
-        if len(row) < 2:
-            continue
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Randomize contact timings in an existing CCP file."
+    )
+    parser.add_argument("contacts", help="Input .ccp file")
+    parser.add_argument("output", help="Output .ccp file")
+    parser.add_argument(
+        "--length", "-l", type=int, default=60,
+        help="Contact plan duration in seconds (default: 60)",
+    )
+    parser.add_argument(
+        "--min-contact", type=int, default=5,
+        help="Minimum contact length in seconds (default: 5)",
+    )
+    parser.add_argument(
+        "--max-contact", type=int, default=15,
+        help="Maximum contact length in seconds (default: 15)",
+    )
+    parser.add_argument(
+        "--seed", "-s", type=int, default=None,
+        help="Random seed (default: none)",
+    )
+    args = parser.parse_args()
 
-        if row[1] == "contact":
-            node_a = row[4]
-            node_b = row[5]
-            unique_pairs.add((node_a, node_b))
-            unique_pairs.add((node_b, node_a))
-        elif row[1] == "fixed":
-            fixed_contacts.append(row)
+    if args.min_contact > args.max_contact:
+        parser.error("--min-contact must be <= --max-contact")
 
-contacts = []
-for pair in unique_pairs:
-    new_start = random.randrange(START_TIME_DEFAULT, end_time - max_con_length)
-    new_end = new_start + random.randrange(min_con_length, max_con_length)
+    if args.seed is not None:
+        random.seed(args.seed)
 
-    contacts.append(["a", "contact", f"+{new_start}", f"+{new_end}", f"{pair[0]}", f"{pair[1]}", "100mbit", 0.0, 0, 0])
+    plan = RawCcpContactPlan.from_file(args.contacts)
 
-contacts.sort(key=lambda l: int(l[2]))
+    # Unique directed links: (src, dst, props, symmetric)
+    dirs: list[tuple[str, str, LinkProperties, bool]] = []
+    seen: set[tuple[str, str, LinkProperties, bool]] = set()
+    for c in plan.contacts:
+        key = (c.src, c.dst, c.props, c.symmetric)
+        if key not in seen:
+            seen.add(key)
+            dirs.append(key)
 
-with open(output_file, 'w') as file:
-    file.write("s loop 1\n")
+    # Generate random contacts per direction
+    lines: list[str] = []
+    for src, dst, props, symmetric in dirs:
+        start = random.randrange(0, args.length - args.max_contact)
+        end = start + random.randint(args.min_contact, args.max_contact)
+        eq = " =" if symmetric else ""
+        lines.append(
+            f"a contact +{start} +{end} {src} {dst} "
+            f"{props.bandwidth} {_fmt(props.loss)} {_fmt(props.delay)} "
+            f"{_fmt(props.jitter)}{eq}"
+        )
 
-    writer = csv.writer(file, delimiter=' ')
-    writer.writerow([])
+    lines.sort(key=lambda l: int(l.split()[2]))
 
-    for contact in fixed_contacts:
-        writer.writerow(contact)
+    # Write output
+    cmd = " ".join([sys.argv[0].split("/")[-1]] + sys.argv[1:])
+    with open(args.output, "w") as f:
+        print(f"# Generated: {datetime.date.today().isoformat()}", file=f)
+        print(f"# Command: {cmd}", file=f)
+        print(f"s loop {int(plan.loop)}", file=f)
+        print(file=f)
+        for c in plan.fixed_contacts:
+            eq = " =" if c.symmetric else ""
+            print(
+                f"a fixed  {c.src} {c.dst} "
+                f"{c.props.bandwidth} {_fmt(c.props.loss)} "
+                f"{_fmt(c.props.delay)} {_fmt(c.props.jitter)}{eq}",
+                file=f,
+            )
+        print(file=f)
+        for line in lines:
+            print(line, file=f)
 
-    writer.writerow([])
-    for contact in contacts:
-        writer.writerow(contact)
+
+if __name__ == "__main__":
+    main()

@@ -41,6 +41,8 @@ Before starting the server, review the following values in `compose.yml`:
 - `SERVERPORT` must match the UDP port published by the `wg-server` service.
 - `ALLOWEDIPS` must include every NSE2 network that the external service should be able to reach through the tunnel.
 
+The templates `server/templates/server.conf` and `server/templates/peer.conf` are mounted into the WireGuard container. The peer template adds `PersistentKeepalive = 25` to the generated client configuration: the external peer sits behind NAT and must initiate and periodically refresh the tunnel, since the server cannot reach it otherwise.
+
 
 ### Setup
 

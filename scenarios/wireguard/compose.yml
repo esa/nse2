@@ -12,7 +12,6 @@ services:
       PGID: 1000
       TZ: Etc/UTC
       PEERS: external
-      PERSISTENTKEEPALIVE_PEERS: external
 
       # Address and port written to the generated client configuration.
       # Use host.docker.internal for same-host testing; otherwise, use an
@@ -27,8 +26,8 @@ services:
       INTERNAL_SUBNET: 10.192.122.0
     volumes:
       - ./server/runtime:/config
-      - ./server/templates/server.conf:/config/templates/server.conf:ro
-      - ./server/setup-iptables.sh:/config/setup-iptables.sh:ro
+      - ./server/templates:/config/templates
+      - ./server/setup-iptables.sh:/config/setup-iptables.sh
       - /lib/modules:/lib/modules:ro
     ports:
       # The published UDP port must match SERVERPORT.

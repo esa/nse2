@@ -8,22 +8,21 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: Etc/UTC
-      PEERS: external
-
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - NODE_ID=3
+      - TYPE=Host
+      - PEERS=external
       # Address and port written to the generated client configuration.
       # Use host.docker.internal for same-host testing; otherwise, use an
       # address reachable from the external host.
-      SERVERURL: host.docker.internal
-      SERVERPORT: 51820
-
+      - SERVERURL=host.docker.internal
+      - SERVERPORT=51820
       # Networks the generated client configuration routes through WireGuard.
       # Add any NSE2 network that the external service must be able to reach.
-      ALLOWEDIPS: 10.192.122.0/24,172.30.0.0/24,172.31.0.0/24
-
-      INTERNAL_SUBNET: 10.192.122.0
+      - ALLOWEDIPS=10.192.122.0/24,172.30.0.0/24,172.31.0.0/24
+      - INTERNAL_SUBNET=10.192.122.0
     volumes:
       - ./server/runtime:/config
       - ./server/templates:/config/templates
@@ -40,6 +39,11 @@ services:
         ipv4_address: 172.30.0.2
       wg_n2:
         ipv4_address: 172.31.0.2
+      # network with high gateway priority used for container-host communication
+      # that should not be traffic shaped like the others
+      wg_transport:
+        ipv4_address: 172.32.0.2
+        gw_priority: 100
   n1:
     container_name: n1
     hostname: n1
@@ -49,8 +53,8 @@ services:
     volumes:
       - ./compose.yml:/compose.yml:ro
     environment:
-      NODE_ID: 1
-      TYPE: Host
+      - NODE_ID=1
+      - TYPE=Host
     networks:
       wg_n1:
         ipv4_address: 172.30.0.3
@@ -66,8 +70,8 @@ services:
     volumes:
       - ./compose.yml:/compose.yml:ro
     environment:
-      NODE_ID: 2
-      TYPE: Host
+      - NODE_ID=2
+      - TYPE=Host
     networks:
       wg_n2:
         ipv4_address: 172.31.0.3
@@ -83,3 +87,7 @@ networks:
     ipam:
       config:
         - subnet: 172.31.0.0/24
+  wg_transport:
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24

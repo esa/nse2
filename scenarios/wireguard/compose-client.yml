@@ -8,9 +8,9 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      TZ: ${TZ:-Etc/UTC}
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
     volumes:
       - ./client/wg0.conf:/config/wg_confs/wg0.conf
       - /lib/modules:/lib/modules:ro

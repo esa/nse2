@@ -1,9 +1,9 @@
 name: wireguard-external-service-scenario
 
 services:
-  wg-server:
+  n3_wg:
     image: lscr.io/linuxserver/wireguard:latest
-    container_name: wg-server
+    container_name: n3_wg
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -35,9 +35,9 @@ services:
       - net.ipv4.conf.all.src_valid_mark=1
     restart: unless-stopped
     networks:
-      wg_n1:
+      n1_n3_wg:
         ipv4_address: 172.30.0.2
-      wg_n2:
+      n2_n3_wg:
         ipv4_address: 172.31.0.2
       # network with high gateway priority used for container-host communication
       # that should not be traffic shaped like the others
@@ -56,7 +56,7 @@ services:
       - NODE_ID=1
       - TYPE=Host
     networks:
-      wg_n1:
+      n1_n3_wg:
         ipv4_address: 172.30.0.3
     entrypoint: sh -c "apk add iproute2 bash curl && tail -f /dev/null"
     image: alpine
@@ -73,17 +73,17 @@ services:
       - NODE_ID=2
       - TYPE=Host
     networks:
-      wg_n2:
+      n2_n3_wg:
         ipv4_address: 172.31.0.3
     entrypoint: sh -c "apk add iproute2 bash curl && tail -f /dev/null"
     image: alpine
 
 networks:
-  wg_n1:
+  n1_n3_wg:
     ipam:
       config:
         - subnet: 172.30.0.0/24
-  wg_n2:
+  n2_n3_wg:
     ipam:
       config:
         - subnet: 172.31.0.0/24

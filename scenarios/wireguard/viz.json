@@ -1,0 +1,29 @@
+{
+  "title": "WireGuard External Service Example",
+    "description": "Demonstrates an external service connected to NSE2 through a WireGuard server.",
+  "background": "extras/background.jpg",
+  "links": "tmp/compose.netmap",
+  "nodes": [
+    {
+      "name": "n3_wg",
+      "type": "settings_input_antenna",
+      "x": 500,
+      "y": 400,
+      "color": "MediumSlateBlue"
+    },
+    {
+      "name": "n1",
+      "type": "computer",
+      "x": 350,
+      "y": 300,
+      "color": "SkyBlue"
+    },
+    {
+      "name": "n2",
+      "type": "computer",
+      "x": 650,
+      "y": 300,
+      "color": "SkyBlue"
+    }
+  ]
+}

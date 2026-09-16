@@ -1,7 +1,8 @@
 server/runtime/*
 !server/runtime/.gitkeep
 
-client/wg0.conf
+client/*
+!client/.gitkeep
 
 *.key
 *.conf.generated

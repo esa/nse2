@@ -121,3 +121,58 @@ docker compose -f compose-client.yml exec wg-client ping n1
 docker compose -f compose-client.yml exec wg-client ping n2
 ```
 
+### Contact Plan
+
+The contact plan applies its traffic shaping rules on the containers in the `compose.yml` like it would for any other scenario.
+This means, that the traffic shaping happens directly on the links between `n3_wg` and the other nodes `n1` and `n2`.
+
+To start this contact plan run:
+
+```sh
+nse2_contacts -m compose.yml contacts.ccp
+```
+
+#### Testing the Links
+
+Now the delay and bandwidth constraints should be applied between the nodes.
+To test this, either run the [Action Workload](#action-workload) and inspect the logs or ping the containers manually:
+
+```sh
+# ping n1 -> n3
+docker compose exec n1 ping n3_wg
+# ping n2 -> n3
+docker compose exec n2 ping n3_wg
+# ping n3 -> n1, execute on the host that runs the external application, not the NSE2 host!
+docker compose -f compose-client.yml exec wg-client ping n1
+```
+
+You should see RTTs and connectivity in accordance with the contact plan.
+
+### Action Workload
+
+To run the basic actions for this example, execute on the NSE2 host:
+
+```sh
+nse2_actions actions.txt
+```
+
+The workload records one ping result every five seconds and probes the external HTTP service every ten seconds.
+The logs are kept inside each NSE2 node:
+
+```sh
+docker compose exec n1 cat /tmp/ping.log
+docker compose exec n1 cat /tmp/curl.log
+```
+
+HTTP status `200` indicates a successful tunnel request; `000` indicates that the request timed out or otherwise received no HTTP response.
+Uncomment `DURATION=60` in `actions.txt` for a finite run.
+
+### Visualisation
+
+To start the visualisation can be started with:
+
+```sh
+nse2_netviz viz.json
+```
+
+and shows current connectivity on `http://localhost:8080`.

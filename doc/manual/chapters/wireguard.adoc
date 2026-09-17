@@ -1,0 +1,223 @@
+The `wireguard` scenario demonstrates how an external application can
+participate in an NSE2 scenario through a real WireGuard tunnel. It combines a
+Docker Compose topology on the NSE2 host with a second Compose project on the
+external host.
+
+The NSE2 side contains two nodes, `n1` and `n2`, and a virtual node named
+`n3_wg`. The virtual node runs the WireGuard server and forwards traffic to a
+peer on the external host. The external host runs the WireGuard client and an
+HTTP application in the same network namespace.
+
+[.text-center]
+.WireGuard external service topology
+[plantuml, format="png", id="FigWireGuardTopology"]
+----
+left to right direction
+
+package "NSE2 host" {
+  rectangle "n1" as n1
+  rectangle "n2" as n2
+  rectangle "n3_wg\n(WireGuard server /\ntransparent proxy)" as n3_wg
+  n1 <--> n3_wg
+  n2 <--> n3_wg
+}
+
+package "External host" {
+  rectangle "WireGuard client" as client
+  rectangle "External HTTP application" as app
+  client -- app
+}
+
+n3_wg <--> client : WireGuard tunnel
+----
+
+The complete scenario is in `scenarios/wireguard/`. The generic Compose and
+contact plan formats are described in <<compose-format>> and
+<<contactplan-format>>. This section focuses on the parts that differ from the
+standard container-only scenarios.
+
+==== Compose Topology
+
+The scenario uses two Compose files because the external application is not an
+NSE2 node. The important parts of `compose.yml` are:
+
+* `n3_wg` is a specialized gateway service rather than a normal NSE2 node.
+  It is a WireGuard server, but to NSE2 and the other nodes it appears as node n3. 
+* `n1` and `n2` are regular NSE2 nodes.
+* `compose-client.yml` runs the external application with
+  `network_mode: service:wg-client`. The application therefore shares the
+  WireGuard client's network namespace and needs no separate route to use the
+  tunnel.
+
+The three networks in `compose.yml` have distinct purposes:
+
+[cols="1,2",options="header"]
+|===
+| Network | Purpose
+
+| `n1_n3_wg` and `n2_n3_wg`
+| The simulated links between each NSE2 node and `n3_wg`. These are the links
+  named by `contacts.ccp` and therefore receive the simulated bandwidth,
+  delay, and availability conditions.
+
+| `wg_transport`
+| A high-priority gateway network used for communication with the host and the
+  external WireGuard endpoint. It is deliberately not listed in the contact
+  plan, so the outer WireGuard packets are not shaped as they leave the host.
+|===
+
+This separation is important: the tunnel remains available to carry traffic,
+while the traffic path inside NSE2 can still be made intermittent or delayed.
+The generated peer configuration uses `ALLOWEDIPS` to route the WireGuard
+subnet and the NSE2 node networks through the tunnel.
+
+==== Gateway and iptables Configuration
+
+The server template installs `setup-iptables.sh` as both a `PostUp` and a
+`PostDown` hook for the `wg0` interface. The script is based on the container's
+actual interfaces and the generated peer configuration.
+
+When the interface starts, the script:
+
+* Finds every attached interface except loopback and `wg0`.
+* Reads the single peer `/32` address and the WireGuard listen port with
+  `wg show`.
+* Allows forwarding between the peer and each Docker network and adds
+  masquerading for return traffic.
+* Accepts the outer WireGuard UDP port before the catch-all rule.
+* DNATs other traffic addressed to a local `n3_wg` Docker address through the
+  tunnel to the generated peer address, then permits the translated traffic
+  through `wg0`.
+* Stores the peer address and port in `/run` so that `PostDown` can remove the
+  same rules after the WireGuard interface has been removed.
+
+Rules are added only when absent and removed until absent, making repeated
+`up` and `down` calls safe. The script expects exactly one peer, which matches
+this example's one external service per WireGuard gateway.
+
+==== Configuration
+
+Before starting the NSE2 topology, review these values in
+`scenarios/wireguard/compose.yml`:
+
+* `SERVERURL` is the address through which the external host reaches the NSE2
+  host. For a same-host test, `host.docker.internal` can be used.
+* `SERVERPORT` must match the published UDP port for `n3_wg`.
+* `ALLOWEDIPS` must contain the NSE2 networks that the external application
+  should reach through the tunnel. Here, a list of all /24 networks can be used
+  or directly a bigger /20 for example.
+
+The example uses the https://github.com/linuxserver/docker-wireguard[LinuxServer.io
+WireGuard image]. Refer to its documentation for other container or host
+requirements.
+
+==== Starting and Verifying the Example
+
+Run the following command from `scenarios/wireguard/` on the NSE2 host:
+
+[source,bash]
+----
+nse2_topo compose.yml
+----
+
+The `n3_wg` container generates the server keys and the peer configuration
+under `server/runtime`, indicated by the line in the log:
+
+[source,text]
+----
+n3_wg  | **** No wg0.conf found (maybe an initial install), generating 1 server and external peer/client confs ****
+n3_wg  | PEER external QR code (conf file is saved under /config/peer_external):
+----
+
+and bind mounted to the host at: `server/runtime/peer_external/peer_external.conf`.
+
+Copy it to `client/wg0.conf` on the external host. For a same-host test:
+
+[source,bash]
+----
+cp server/runtime/peer_external/peer_external.conf client/wg0.conf
+chmod 600 client/wg0.conf
+----
+
+For a separate host, use a mechanism such as `scp` and apply the restrictive
+permissions there. The generated file contains the peer's private key and must
+not be committed to the repository.
+
+Start the external WireGuard client and application from the directory that
+contains `compose-client.yml`:
+
+[source,bash]
+----
+docker compose -f compose-client.yml up -d
+----
+
+If the wireguard config was correctly copied the client should log:
+
+[source,text]
+----
+external-wg-client  | **** Found WG conf /config/wg_confs/wg0.conf, adding to list ****
+----
+
+After that, check the handshake on both sides. Run the first command on the NSE2 host and
+the second command on the external host:
+
+[source,bash]
+----
+docker compose exec n3_wg wg show
+docker compose -f compose-client.yml exec wg-client wg show
+----
+
+It should look something like this:
+
+[source,text]
+----
+interface: wg0
+  public key: R/t7uUEJbPYZDxvAsLX9UNxGtxLR+zPnHEIEbhpAcQQ=
+  private key: (hidden)
+  listening port: 51820
+
+peer: 1dRTEhlIJsX8uXaoT0d8g7vsuzw3/P4xLWgomm2Fhgs=
+  preshared key: (hidden)
+  endpoint: 172.32.0.1:51820
+  allowed ips: 10.192.122.2/32
+  latest handshake: Now
+  transfer: 520 B received, 184 B sent
+----
+
+The `latest handshake` value should be a few seconds old. If there is no
+handshake, check `SERVERURL`, UDP reachability for `SERVERPORT`, and the copied
+peer configuration. Your WireGuard tunnel was not setup correctly.
+
+The example application listens on port 80. Test traffic in both directions:
+
+[source,bash]
+----
+docker compose exec n1 curl --fail http://n3_wg
+docker compose exec n2 curl --fail http://n3_wg
+docker compose -f compose-client.yml exec wg-client ping n1
+docker compose -f compose-client.yml exec wg-client ping n2
+----
+
+The first two requests should return `Hello from external WireGuard service!`.
+
+==== Running the NSE2 Tools
+
+After the tunnel is established, use the standard NSE2 tools described in
+<<running>> and proceed as normal, starting the contact player with the scenario's
+topology and contact plan, setting up visualisation and starting the actions.
+
+The action file provides a small ping and HTTP workload. The general syntax and
+behavior is covered by <<actions-format>>.
+
+==== Stopping the Scenario
+
+Stop the action runner, contact player and topology as normal with `Ctrl+C`. Then
+stop the external Compose project on the external host:
+
+[source,bash]
+----
+docker compose -f compose-client.yml down
+----
+
+Remove `client/wg0.conf` and the generated contents of `server/runtime` when
+the test credentials are no longer needed.

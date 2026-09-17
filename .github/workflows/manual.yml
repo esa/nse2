@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -39,12 +39,18 @@ jobs:
         run: ./build.sh
 
       - name: Upload PDF for pull request
+        id: upload-pdf
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nse2-manual-pdf
           path: doc/manual/manual.pdf
           if-no-files-found: error
+
+      - name: Link generated PDF
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "[Download the generated manual PDF artifact](${{ steps.upload-pdf.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit generated PDF
         if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)

@@ -27,9 +27,9 @@ In this scenario the satellite passes are frequent and data can be downlinked at
 ## Contact Plan and Compose File
 
 The contact plan [contacts.ccp](contacts.ccp) is generated from
-`actual_contacts.csv` via `csv_to_ccp.py`. The compose file
+`actual_contacts.csv` via `csv_to_ccp`. The compose file
 [compose.yml](compose.yml) is generated from the same CSV via
-`csv_to_compose.py`.
+`csv_to_compose`.
 
 The CSV-to-Compose conversion uses `nodes.json` for node metadata and strips
 the `eo` prefix from node names. The generated contact plan also strips the
@@ -37,10 +37,10 @@ the `eo` prefix from node names. The generated contact plan also strips the
 them.
 
 For short test runs, [contacts_testing.ccp](contacts_testing.ccp) is derived
-from `contacts.ccp` with `random-contacts.py`:
+from `contacts.ccp` with `random_contacts`:
 
 ```bash
-random-contacts.py contacts.ccp contacts_testing.ccp \
+random_contacts contacts.ccp contacts_testing.ccp \
   --length 120 --min-contact 30 --max-contact 30 --seed 0
 ```
 

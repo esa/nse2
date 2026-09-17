@@ -1,0 +1,61 @@
+name: Build Manual
+
+on:
+  push:
+    paths:
+      - "doc/**"
+  pull_request:
+    paths:
+      - "doc/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install manual dependencies
+        run: gem install asciidoctor-pdf asciidoctor-kroki
+
+      - name: Check Kroki access
+        run: curl --fail --silent --show-error --head https://kroki.io/
+
+      - name: Build manual PDF
+        working-directory: doc/manual
+        run: ./build.sh
+
+      - name: Upload PDF for pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse2-manual-pdf
+          path: doc/manual/manual.pdf
+          if-no-files-found: error
+
+      - name: Commit generated PDF
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          if git diff --quiet -- doc/manual/manual.pdf; then
+            echo "Manual PDF is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add doc/manual/manual.pdf
+          git commit -m "docs: regenerate manual PDF"
+          git push

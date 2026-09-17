@@ -1,3 +1,15 @@
-There are several ways to create a new simulation scenario in NSE2, depending on your preferences and requirements. 
-This section covers the three main methods: using the `netedit` tool, converting CSV/JSON files, and manually creating a scenario file.
-Depending on whether you prefer a graphical interface, command-line tools, or manual editing, you can choose the method that best suits your workflow.
+The recommended way to create an NSE2 scenario is to start with a scenario in
+the https://github.com/esa/ccsds-dtn-reference-scenarios[CCSDS DTN Reference
+Scenarios] format. The repository provides the scenario data as CSV files;
+these can be converted directly into the NSE2 contact plan and Docker Compose
+files. The generated files keep node names and links synchronized, avoiding the
+need to understand the specifics of the <<contactplan-format,CCP format>> and
+<<compose-format,Compose format>>.
+
+The CSV scenario can be used unchanged, adapted before conversion, or used as
+the basis for a more substantial modification. Alternatively, an already
+converted scenario from NSE2's `scenarios/` directory can be copied and
+adapted. Creating both files manually should generally be avoided, but remains
+useful for small examples or special-purpose topologies. `netedit` is another
+alternative for graphical topology editing; its GraphML conversion to NSE2
+files is still a work in progress.

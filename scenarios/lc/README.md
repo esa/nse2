@@ -14,9 +14,9 @@ Further information about the scenario, including data rates, topology and backg
 
 ## Contact Plan and Compose File
 
-The contact plan [contacts.ccp](contacts.ccp) is generated from `actual_contacts.csv` via `csv_to_ccp.py`.
+The contact plan [contacts.ccp](contacts.ccp) is generated from `actual_contacts.csv` via `csv_to_ccp`.
 
-The compose file [compose.yml](compose.yml) is generated from the same CSV via `csv_to_compose.py`.
+The compose file [compose.yml](compose.yml) is generated from the same CSV via `csv_to_compose`.
 
 ## Docker: Running the Scenario
 

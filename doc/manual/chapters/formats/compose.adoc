@@ -20,12 +20,19 @@ You set the container `image` or alternatively the `build` option to specify the
 
 IMPORTANT: The container images used for the nodes must have `iproute2` installed so that `tc qdisc` can be used to configure the network emulation for the link effects. Also, for very large delays, e.g., several minutes like to mars, a version of `iproute2` from https://git.kernel.org/pub/scm/network/iproute2/iproute2.git/commit/?id=9a6b231ea1b09e450688c5814a4c89a57cdbee77[mid 2024] or later is required.
 
-There are a few optional things to configure for each node:
+For scenarios managed by `nse2_contacts`, every node must define the
+`environment` variable `NODE_ID` with a unique number. The contact player uses
+this value when resolving node references from the contact plan and applying
+its contacts. Applications can also use it for IPN auto-configuration.
 
-- Sharing the compose and contact plan files `read-only` with the node container (`./compose.yml:/compose.yml:ro`, `./contacts.ccp:/contacts.ccp:ro`), so that the node can parse the topology if needed, for routing purposes.
-- Set the `environment` variables `NODE_ID` to a unique number, e.g., to use for IPN auto configuration in DTN networks. This is useful for the node to identify itself in the simulation.
+The Compose and contact plan files can optionally be shared with a node as
+read-only mounts (`./compose.yml:/compose.yml:ro`,
+`./contacts.ccp:/contacts.ccp:ro`). This is useful when an application inside
+the node needs to inspect the topology or contact plan, for example to set up
+its own routing. The mounts are not required by the contact player itself.
 
-Of course, you can also add custom entry points or any other environment variables that are needed for the node to run, such as configuration files or other parameters specific to the service.
+Custom entrypoints and additional environment variables can be added when the
+node service needs application-specific configuration.
 
 TIP: Sometimes it is useful to wrap your `entrypoint` commands in a `bash -c` command to ensure that the commands are executed in a shell environment. This is especially useful if you want to use shell features like variable expansion or command substitution. An example of this would be: `entrypoint: 'sh -c "apk add iproute2 bash && tail -f /dev/null"'`
 

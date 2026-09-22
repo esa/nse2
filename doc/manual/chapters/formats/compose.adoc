@@ -23,7 +23,7 @@ IMPORTANT: The container images used for the nodes must have `iproute2` installe
 For scenarios managed by `nse2_contacts`, every node must define the
 `environment` variable `NODE_ID` with a unique number. The contact player uses
 this value when resolving node references from the contact plan and applying
-its contacts. Applications can also use it for IPN auto-configuration.
+its contacts. Applications can also use it for DTN auto-configuration.
 
 The Compose and contact plan files can optionally be shared with a node as
 read-only mounts (`./compose.yml:/compose.yml:ro`,

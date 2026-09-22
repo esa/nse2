@@ -11,5 +11,5 @@ the basis for a more substantial modification. Alternatively, an already
 converted scenario from NSE2's `scenarios/` directory can be copied and
 adapted. Creating both files manually should generally be avoided, but remains
 useful for small examples or special-purpose topologies. `netedit` is another
-alternative for graphical topology editing; its GraphML conversion to NSE2
-files is still a work in progress.
+alternative for graphical topology editing, though its GraphML conversion to NSE2
+files is currently not yet supported.

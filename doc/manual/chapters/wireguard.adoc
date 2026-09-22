@@ -1,5 +1,5 @@
 The `wireguard` scenario demonstrates how an external application can
-participate in an NSE2 scenario through a real WireGuard tunnel. It combines a
+participate in an NSE2 scenario through a WireGuard tunnel. It combines a
 Docker Compose topology on the NSE2 host with a second Compose project on the
 external host.
 
@@ -30,6 +30,14 @@ package "External host" {
 
 n3_wg <--> client : WireGuard tunnel
 ----
+
+[IMPORTANT]
+====
+A WireGuard gateway node supports exactly one external WireGuard peer.
+Each virtual gateway node (`n3_wg`) is designed to represent a single external
+service reachable through a single WireGuard client. To connect multiple
+external services, deploy additional WireGuard gateway nodes, one per service.
+====
 
 The complete scenario is in `scenarios/wireguard/`. The generic Compose and
 contact plan formats are described in <<compose-format>> and
@@ -140,15 +148,14 @@ chmod 600 client/wg0.conf
 ----
 
 For a separate host, use a mechanism such as `scp` and apply the restrictive
-permissions there. The generated file contains the peer's private key and must
-not be committed to the repository.
+permissions there. The generated file contains the peer's private key and should not be shared.
 
 Start the external WireGuard client and application from the directory that
 contains `compose-client.yml`:
 
 [source,bash]
 ----
-docker compose -f compose-client.yml up -d
+docker compose -f compose-client.yml up
 ----
 
 If the wireguard config was correctly copied the client should log:
@@ -194,8 +201,8 @@ The example application listens on port 80. Test traffic in both directions:
 ----
 docker compose exec n1 curl --fail http://n3_wg
 docker compose exec n2 curl --fail http://n3_wg
-docker compose -f compose-client.yml exec wg-client ping n1
-docker compose -f compose-client.yml exec wg-client ping n2
+docker compose -f compose-client.yml exec wg-client ping -c 3 n1
+docker compose -f compose-client.yml exec wg-client ping -c 3 n2
 ----
 
 The first two requests should return `Hello from external WireGuard service!`.

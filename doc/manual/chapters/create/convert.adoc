@@ -96,9 +96,9 @@ Generate the two NSE2 inputs from the same CCSDS contact CSV:
 
 [source,bash]
 ----
-csv_to_ccp --strip-prefix eo --output contacts.ccp actual_contacts.csv
+csv_to_ccp --strip-prefix eo actual_contacts.csv --output contacts.ccp 
 csv_to_compose --strip-prefix eo --nodes nodes.json \
-  --name earth-orbit --output compose.yml actual_contacts.csv
+  --name earth-orbit actual_contacts.csv --output compose.yml
 ----
 
 Both generators record the generation date and command in their output. Review
@@ -107,7 +107,7 @@ workflow from <<running>>.
 
 ==== Shortening Realistic Contact Plans
 
-As an alternative to `csv_to_ccp`'s time and bandwidth scaling, `random_contacts`
+As an alternative to `csv_to_ccp` 's time and bandwidth scaling, `random_contacts`
 keeps the topology and link properties but replaces long, realistic contact
 windows with short random ones for a compact test run:
 

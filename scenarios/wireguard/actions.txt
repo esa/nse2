@@ -1,0 +1,18 @@
+# Uncomment for a 60-second run.
+# DURATION=60
+
+# Mark scenario start.
+EXEC 0 n1 'date > /tmp/started.txt'
+EXEC 0 n2 'date > /tmp/started.txt'
+
+# Log ping latency and loss every 5 seconds.
+REPEAT 0 5 n1 'echo "$(date +%F\ %T\ %Z) $(ping -c 1 -W 1 n3_wg 2>&1 | tail -1)" >> /tmp/ping.log'
+REPEAT 0 5 n2 'echo "$(date +%F\ %T\ %Z) $(ping -c 1 -W 1 n3_wg 2>&1 | tail -1)" >> /tmp/ping.log'
+
+# Probe the external HTTP service.
+REPEAT 5 10 n1 'echo "$(date +%F\ %T\ %Z) n1 -> n3_wg: HTTP code: $(curl -s -m 5 -o /dev/null -w "%{http_code}" http://n3_wg)" >> /tmp/curl.log'
+REPEAT 10 10 n2 'echo "$(date +%F\ %T\ %Z) n2 -> n3_wg: HTTP code: $(curl -s -m 5 -o /dev/null -w "%{http_code}" http://n3_wg)" >> /tmp/curl.log'
+
+# Record completion and stop probes.
+FINALLY n1 'date > /tmp/finished.txt && pkill -f ping && pkill -f curl'
+FINALLY n2 'date > /tmp/finished.txt && pkill -f ping && pkill -f curl'

@@ -8,6 +8,7 @@ import os
 import re
 import networkx as nx
 import asyncio
+import argparse
 
 from tools.mgr.helpers import *
 
@@ -441,39 +442,31 @@ def ui_main(compose_file: str, contact_plan: str):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <compose-file> <contact-plan>")
-        quit(1)
-    compose_file = sys.argv[1]
-    contact_plan = sys.argv[2]
-    if not is_scenario_running(compose_file):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("compose_file", help="compose file to load")
+    parser.add_argument("contact_plan", help="contact plan file to load")
+    parser.add_argument("-b", "--bind", help="bind address for web interface to listen on", default="127.0.0.1")
+    parser.add_argument("-p", "--port", help="port for web interface to listen on", default=8800)
+    args = parser.parse_args()
+
+    if not is_scenario_running(args.compose_file):
         print("Scenario is not running")
         quit(1)
 
     print("Retrieving container names...")
-    container_names = get_container_names(compose_file)
+    container_names = get_container_names(args.compose_file)
     print(container_names)
 
-    # import time
-
-    # s = time.time()
-    # print(get_container_interfaces(compose_file))
-    # print(f"Elapsed time: {time.time() - s}")
-    # print()
-    # s = time.time()
-    # print(get_container_interfaces_parallel(compose_file))
-    # print(f"Elapsed time: {time.time() - s}")
-
     def build_page():
-        ui_main(compose_file, contact_plan)
+        ui_main(args.compose_file, args.contact_plan)
 
     ui.run(
         root=build_page,
         reload=False,
         title="Docker TestBed Manager",
         show=False,
-        port=8800,
-        host="127.0.0.1",
+        host=args.bind,
+        port=args.port,
     )
 
 

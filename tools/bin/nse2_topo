@@ -10,10 +10,6 @@
 # Licensed under the MIT/Apache License.
 
 DOCKERCMD=docker
-# use podman if available
-if command -v podman &> /dev/null; then
-    DOCKERCMD=podman
-fi
 
 cleanup () {
     echo "Cleaning up..."

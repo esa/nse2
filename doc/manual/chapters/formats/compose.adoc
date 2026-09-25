@@ -52,4 +52,6 @@ Additionally, it can be helpful to set the `ipam` option to specify the IP addre
 
 Finally, if you expect multiple links between the same pair of nodes, you can use specific network interfaces for the link (`com.docker.network.container_iface_prefix`). This prefix is used for the actual network interface name in the node container. Contact plans can then refer to these interfaces by their name, e.g., `dev:eth0` or `dev:n1_n2_0` for the second interface, and so on, instead of using the node name as second node.
 
+IMPORTANT: NSE2 relies on Docker's `com.docker.network.container_iface_prefix` option to assign predictable names to container network interfaces. Podman does not provide this Docker-specific behavior and is therefore not supported.
+
 WARNING: Network names in docker are global. Thus, running two scenarios with the same network names in parallel will lead to conflicts!

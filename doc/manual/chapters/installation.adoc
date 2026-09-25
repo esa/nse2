@@ -12,8 +12,7 @@ Before installing NSE2, ensure that you have the following prerequisites:
 * Docker (for containerized environments)
 * Docker Compose
 
-NOTE: In theory, podman can be used instead of Docker, but it is not tested. Also, it must be used with the proper `docker compose` and not `podman-compose`.
-
+NOTE: Podman is not supported. NSE2 relies on Docker-specific network interface naming; see <<compose-format>> for details.
 
 === Installation Steps
 

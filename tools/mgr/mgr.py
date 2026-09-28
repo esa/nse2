@@ -380,24 +380,10 @@ def ui_main(compose_file: str, contact_plan: str) -> None:
             btn_pause.on_click(lambda: pause_resume_scenario(btn_pause))
 
         with ui.tabs().classes("w-full") as tabs:
-            tab_overview = ui.tab("Overview")
             tab_links = ui.tab("Links")
             tab_map = ui.tab("Map")
-        with ui.tab_panels(tabs, value=tab_overview).classes("w-full h-full"):
-            with ui.tab_panel(tab_overview):
-                with ui.scroll_area().classes("h-2/3 border"):
-                    for c in containers:
-                        with ui.row():
-                            ui.label(c).classes("text-lg").style("width: 250px")
-                            ui.space()
-                            ui.button(
-                                "Shell", on_click=lambda c=c: console.open_shell(c)
-                            )
-                            ui.button(
-                                "Log", on_click=lambda c=c: console.open_logs(c)
-                            )
+        with ui.tab_panels(tabs, value=tab_links).classes("w-full h-full"):
             with ui.tab_panel(tab_links):
-                # draw_overview()
                 ui.button(
                     "Refresh",
                     on_click=lambda: draw_links(links_area, compose_file),

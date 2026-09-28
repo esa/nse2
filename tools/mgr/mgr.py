@@ -4,12 +4,11 @@ import sys
 from nicegui import ui, run
 import subprocess
 import socket
-import os
 import re
 import networkx as nx
-import asyncio
 
 from tools.mgr.helpers import *
+from tools.webui.console import ConsoleFooter
 
 # regex to extract rate, delay, loss, jitter from tc output
 tc_rate = re.compile(r"rate ([0-9]+[KMG]bit)")
@@ -90,16 +89,6 @@ def pause_resume_scenario(btn: ui.button):
             btn.text = "Pause"
         except Exception as e:
             print(e)
-
-
-def open_xterm(container: str):
-    print(f"Opening xterm for container {container}")
-    os.system(f'xterm -e "docker exec -it {container} /bin/bash" &')
-
-
-def open_log(compose_file: str, container: str):
-    print(f"Opening logs for container {container}")
-    os.system(f'xterm -e "docker compose -f {compose_file} logs -f {container}" &')
 
 
 link_memory = {}
@@ -362,9 +351,11 @@ def draw_map(map_area: ui.scroll_area):
             # ax.plot(x, y, "-")
 
 
-def ui_main(compose_file: str, contact_plan: str):
+def ui_main(compose_file: str, contact_plan: str) -> None:
     global g
     g = load_graph_from_file(compose_file)
+    containers: list[str] = get_container_names(compose_file)
+    console = ConsoleFooter(containers)
     print(g)
     print(g.edges())
 
@@ -395,17 +386,15 @@ def ui_main(compose_file: str, contact_plan: str):
         with ui.tab_panels(tabs, value=tab_overview).classes("w-full h-full"):
             with ui.tab_panel(tab_overview):
                 with ui.scroll_area().classes("h-2/3 border"):
-                    containers = get_container_names(compose_file)
                     for c in containers:
                         with ui.row():
                             ui.label(c).classes("text-lg").style("width: 250px")
                             ui.space()
                             ui.button(
-                                "Shell",
-                                on_click=lambda c=c: open_xterm(c),
+                                "Shell", on_click=lambda c=c: console.open_shell(c)
                             )
                             ui.button(
-                                "Log", on_click=lambda c=c: open_log(compose_file, c)
+                                "Log", on_click=lambda c=c: console.open_logs(c)
                             )
             with ui.tab_panel(tab_links):
                 # draw_overview()
@@ -426,6 +415,8 @@ def ui_main(compose_file: str, contact_plan: str):
         )
         # draw_links()
 
+    console.build()
+
     ui.timer(
         10.0,
         lambda: health_check_timer(compose_file, lbl_status),
@@ -440,7 +431,7 @@ def ui_main(compose_file: str, contact_plan: str):
     )
 
 
-def main():
+def main() -> None:
     if len(sys.argv) != 3:
         print(f"Usage: {sys.argv[0]} <compose-file> <contact-plan>")
         quit(1)

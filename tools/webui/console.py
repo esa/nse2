@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import os
 import pty
@@ -373,20 +374,16 @@ def attach_container_to_xterm(terminal: Xterm, container: str) -> None:
         loop.add_reader(pty_fd, pty_to_terminal)
 
     def terminal_to_pty(event: events.XtermDataEventArguments) -> None:
-        try:
+        with contextlib.suppress(OSError):
             os.write(pty_fd, event.data.encode("utf-8"))
-        except OSError:
-            pass
 
     def resize_terminal(event: events.XtermResizeEventArguments) -> None:
-        try:
+        with contextlib.suppress(OSError):
             fcntl.ioctl(
                 pty_fd,
                 termios.TIOCSWINSZ,
                 struct.pack("HHHH", event.rows, event.cols, 0, 0),
             )
-        except OSError:
-            pass
 
     terminal.on_data(terminal_to_pty)
     terminal.on_resize(resize_terminal)
@@ -400,18 +397,12 @@ def attach_container_to_xterm(terminal: Xterm, container: str) -> None:
         closed = True
         if loop is not None:
             loop.remove_reader(pty_fd)
-        try:
+        with contextlib.suppress(OSError):
             os.close(pty_fd)
-        except OSError:
-            pass
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.kill(pty_pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
+        with contextlib.suppress(ChildProcessError):
             os.waitpid(pty_pid, 0)
-        except ChildProcessError:
-            pass
 
     ui.context.client.on_delete(cleanup)  # pyright: ignore[reportUnknownMemberType]
 

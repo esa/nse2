@@ -1,7 +1,9 @@
 import subprocess
 
 
-def run_in_container(container_name: str, command: str, debug_print: bool = False):
+def run_in_container(
+    container_name: str, command: str, debug_print: bool = False
+) -> str:
     """Run a shell command inside a Docker container and return stdout."""
     if debug_print:
         print(f"Running command in container {container_name}: {command}")
@@ -15,7 +17,7 @@ def run_in_container(container_name: str, command: str, debug_print: bool = Fals
 
     if res.returncode != 0:
         raise RuntimeError(
-            f"Command failed in container {res.args}:\n" + f"stderr: {res.stderr}"
+            f"Command failed in container {container_name}:\nstderr: {res.stderr}"
         )
     return res.stdout
 
@@ -28,7 +30,7 @@ def set_on_interface(
     delay: float = 0,
     jitter: float = 0,
     bandwidth: str = "",
-):
+) -> str:
     """Apply tc/netem settings to one interface in a Docker container."""
     if delay > 1000:
         delay_str = f"{delay // 1000}s"

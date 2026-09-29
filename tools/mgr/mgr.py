@@ -29,6 +29,36 @@ TC_RATE_RE: re.Pattern[str] = re.compile(r"rate ([0-9]+[KMG]bit)")
 TC_LOSS_RE: re.Pattern[str] = re.compile(r"loss ([0-9]+)%")
 TC_DELAY_RE: re.Pattern[str] = re.compile(r"delay ([0-9.e+]+)(ms|s)")
 TC_JITTER_RE: re.Pattern[str] = re.compile(r"jitter ([0-9.e+]+)(ms|s)")
+TC_BANDWIDTH_RE: re.Pattern[str] = re.compile(r"[0-9]+[KMGT]bit", re.IGNORECASE)
+
+
+def validate_bandwidth(value: str) -> str | None:
+    bandwidth = value.strip()
+    if not bandwidth:
+        return None
+    if bandwidth.lower() == "inf":
+        return None
+    return None if TC_BANDWIDTH_RE.fullmatch(bandwidth) else "Use e.g. 10kbit, 1mbit or inf"
+
+
+def validate_percentage(value: str) -> str | None:
+    try:
+        percentage = float(value)
+    except ValueError:
+        return "Not a number"
+    if not 0.0 <= percentage <= 100.0:
+        return "Must be between 0 and 100"
+    return None
+
+
+def validate_non_negative(value: str) -> str | None:
+    try:
+        delay = float(value)
+    except ValueError:
+        return "Not a number"
+    if delay < 0 or delay == float("inf"):
+        return "Must be a non-negative number"
+    return None
 
 
 class Link(TypedDict):
@@ -150,15 +180,18 @@ class ManagerController:
             saved_links[interface] = link
             loss = 100.0
 
-        await run.io_bound(
-            set_on_interface,
-            container,
-            interface,
-            loss=loss,
-            bandwidth=bandwidth,
-            delay=delay_to_milliseconds(link["delay"], link["delay_unit"]),
-            jitter=delay_to_milliseconds(link["jitter"], link["jitter_unit"]),
-        )
+        try:
+            await run.io_bound(
+                set_on_interface,
+                container,
+                interface,
+                loss=loss,
+                bandwidth=bandwidth,
+                delay=delay_to_milliseconds(link["delay"], link["delay_unit"]),
+                jitter=delay_to_milliseconds(link["jitter"], link["jitter_unit"]),
+            )
+        except (OSError, RuntimeError) as error:
+            ui.notify(f"Failed to apply link settings: {error}", type="negative")
         await self.draw_links(links_area)
 
     def create_link_dialog(self, link: Link) -> Dialog:
@@ -169,27 +202,51 @@ class ManagerController:
                 ui.label("Interface: ")
                 interface_label = ui.label(link["interface"])
                 ui.label("Bandwidth: ")
-                bandwidth_input = ui.input(value=link["bandwidth"])
-                ui.label("Loss: ")
-                loss_input = ui.input(value=str(link["loss"]))
+                bandwidth_input = ui.input(
+                    value=link["bandwidth"], validation=validate_bandwidth
+                )
+                ui.label("Loss (%): ")
+                loss_input = ui.input(
+                    value=str(link["loss"]), validation=validate_percentage
+                )
                 ui.label(f"Delay ({link['delay_unit']}): ")
-                delay_input = ui.input(value=str(link["delay"]))
+                delay_input = ui.input(
+                    value=str(link["delay"]), validation=validate_non_negative
+                )
                 ui.label(f"Jitter ({link['jitter_unit']}): ")
-                jitter_input = ui.input(value=str(link["jitter"]))
+                jitter_input = ui.input(
+                    value=str(link["jitter"]), validation=validate_non_negative
+                )
 
                 def submit_link() -> None:
-                    dialog.submit(
-                        Link(
-                            container=container_label.text,
-                            interface=interface_label.text,
-                            bandwidth=bandwidth_input.value or "inf",
-                            loss=float(loss_input.value or "0"),
-                            delay=float(delay_input.value or "0"),
-                            delay_unit=link["delay_unit"],
-                            jitter=float(jitter_input.value or "0"),
-                            jitter_unit=link["jitter_unit"],
-                        )
+                    valid = all(
+                        [
+                            bandwidth_input.validate(),
+                            loss_input.validate(),
+                            delay_input.validate(),
+                            jitter_input.validate(),
+                        ]
                     )
+                    if not valid:
+                        ui.notify(
+                            "Invalid link parameters", type="negative"
+                        )
+                        return
+                    try:
+                        dialog.submit(
+                            Link(
+                                container=container_label.text,
+                                interface=interface_label.text,
+                                bandwidth=bandwidth_input.value or "inf",
+                                loss=float(loss_input.value or "0"),
+                                delay=float(delay_input.value or "0"),
+                                delay_unit=link["delay_unit"],
+                                jitter=float(jitter_input.value or "0"),
+                                jitter_unit=link["jitter_unit"],
+                            )
+                        )
+                    except ValueError:
+                        ui.notify("Invalid link parameters", type="negative")
 
                 ui.button("Apply", on_click=submit_link)
                 ui.button("Cancel", on_click=lambda: dialog.close())
@@ -205,19 +262,22 @@ class ManagerController:
             self.modal_dialog = False
 
         if result is not None:
-            await run.io_bound(
-                set_on_interface,
-                result["container"],
-                result["interface"],
-                loss=result["loss"],
-                bandwidth=(
-                    "" if result["bandwidth"] == "inf" else result["bandwidth"]
-                ),
-                delay=delay_to_milliseconds(result["delay"], result["delay_unit"]),
-                jitter=delay_to_milliseconds(
-                    result["jitter"], result["jitter_unit"]
-                ),
-            )
+            try:
+                await run.io_bound(
+                    set_on_interface,
+                    result["container"],
+                    result["interface"],
+                    loss=result["loss"],
+                    bandwidth=(
+                        "" if result["bandwidth"] == "inf" else result["bandwidth"]
+                    ),
+                    delay=delay_to_milliseconds(result["delay"], result["delay_unit"]),
+                    jitter=delay_to_milliseconds(
+                        result["jitter"], result["jitter_unit"]
+                    ),
+                )
+            except (OSError, RuntimeError) as error:
+                ui.notify(f"Failed to apply link settings: {error}", type="negative")
             await self.draw_links(links_area)
 
     async def draw_links(self, links_area: ScrollArea) -> None:

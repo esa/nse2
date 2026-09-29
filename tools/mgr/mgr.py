@@ -258,7 +258,8 @@ class ManagerController:
         try:
             result = cast(Link | None, await dialog)
         finally:
-            dialog.clear()
+            if not dialog.is_deleted:
+                dialog.clear()
             self.modal_dialog = False
 
         if result is not None:
@@ -441,6 +442,8 @@ def main() -> None:
             port=8800,
             host="127.0.0.1",
         )
+    except KeyboardInterrupt:
+        print("Stopped.")
     finally:
         manager.close()
 

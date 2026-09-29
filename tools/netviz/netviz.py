@@ -144,13 +144,16 @@ def main() -> None:
         dark = ui.dark_mode()
         dark.enable()
 
-    ui.run(
-        root=build_page,
-        title="Network Visualization",
-        reload=False,
-        host="127.0.0.1",
-        show=False,
-    )
+    try:
+        ui.run(
+            root=build_page,
+            title="Network Visualization",
+            reload=False,
+            host="127.0.0.1",
+            show=False,
+        )
+    except KeyboardInterrupt:
+        print("Stopped.")
 
 
 if __name__ == "__main__":

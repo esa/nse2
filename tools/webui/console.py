@@ -81,7 +81,7 @@ class ConsoleFooter:
         if len(set(containers)) != len(containers):
             raise ValueError("Container names must be unique")
 
-        self.containers: list[str] = list(containers)
+        self.containers: list[str] = sorted(containers)
         self.node_icons: dict[str, str] = dict(node_icons or {})
         self.keys: list[str] = [
             f"{name}:{kind}" for name in self.containers for kind, _ in KINDS

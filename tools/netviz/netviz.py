@@ -37,6 +37,8 @@ def load_config(path: str) -> VisConfig:
 def main() -> None:
     print("Starting Network Visualization")
     parser = argparse.ArgumentParser()
+    parser.add_argument("-b", "--bind", help="bind address for web interface to listen on", default="127.0.0.1")
+    parser.add_argument("-p", "--port", help="port for web interface to listen on", default=8000)
     parser.add_argument("config", help="network visualization config file to load")
     args = parser.parse_args()
 
@@ -149,7 +151,8 @@ def main() -> None:
             root=build_page,
             title="Network Visualization",
             reload=False,
-            host="127.0.0.1",
+            host=args.bind,
+            port=args.port,
             show=False,
         )
     except KeyboardInterrupt:

@@ -75,6 +75,8 @@ class Link(TypedDict):
 class ManagerArguments(Namespace):
     compose_file: str = ""
     contact_plan: str = ""
+    bind: str = "127.0.0.1"
+    port: int = 8800
 
 
 def delay_to_milliseconds(value: float, unit: str) -> int:
@@ -428,6 +430,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Manage an NSE2 Docker scenario")
     parser.add_argument("compose_file", help="Docker Compose file for the scenario")
     parser.add_argument("contact_plan", help="scenario contact plan")
+    parser.add_argument(
+        "-b",
+        "--bind",
+        help="bind address for web interface to listen on",
+        default="127.0.0.1",
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        help="port for web interface to listen on",
+        default=8800,
+    )
     args = parser.parse_args(namespace=ManagerArguments())
     if not is_scenario_running(args.compose_file):
         parser.error("Scenario is not running")
@@ -439,8 +454,8 @@ def main() -> None:
             reload=False,
             title="Docker TestBed Manager",
             show=False,
-            port=8800,
-            host="127.0.0.1",
+            port=args.port,
+            host=args.bind,
         )
     except KeyboardInterrupt:
         print("Stopped.")

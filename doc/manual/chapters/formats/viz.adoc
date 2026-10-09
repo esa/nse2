@@ -6,7 +6,7 @@ Optionally, it can also put a background image behind the nodes to provide a bet
 .Example visualization file of an earth observation scenario.
 image::images/viz_eo.png[width=70%, align="center", alt="Example visualization file with nodes and links."]
 
-The visualization frontend is started by running the `nse2_viz` command, which reads the `viz.json` file and starts a web server to serve the visualization.
+The visualization frontend is started by running the `nse2_netviz` command, which reads the `viz.json` file and starts a web server to serve the visualization.
 
 The `viz.json` file used for <<viz-eo-example>> is as follows:
 
@@ -32,4 +32,3 @@ The `links` key is used to specify the file that contains the current state of l
 The file just contains a list of links, each pair on a separate line and a "-" or "." indicating whether it is a fixed or dynamic link, e.g., `n1 - n2` or `n1 . n2`.
 
 IMPORTANT: To get a proper visualization of the active links, `nse2_contacts` must be started with the `-m` option to periodically generate a mapping file with all active links.
-

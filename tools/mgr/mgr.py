@@ -1,473 +1,466 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
-import sys
-from nicegui import ui, run
-import subprocess
-import socket
-import os
-import re
-import networkx as nx
-import asyncio
 import argparse
+import asyncio
+import re
+import socket
+from argparse import Namespace
+from typing import TypedDict, cast
 
-from tools.mgr.helpers import *
+import networkx as nx
+from nicegui import run, ui
+from nicegui.elements.button import Button
+from nicegui.elements.dialog import Dialog
+from nicegui.elements.label import Label
+from nicegui.elements.scroll_area import ScrollArea
+from nicegui.elements.switch import Switch
 
-# regex to extract rate, delay, loss, jitter from tc output
-tc_rate = re.compile(r"rate ([0-9]+[KMG]bit)")
-tc_loss = re.compile(r"loss ([0-9]+)%")
+from tools.contact_player.tc_netem import set_on_interface
+from tools.mgr.helpers import (
+    get_container_interfaces,
+    get_container_names,
+    is_scenario_running,
+    load_graph_from_file,
+)
+from tools.webui.console import ConsoleFooter
 
-tc_delay = re.compile(r"delay ([0-9.e+]+)(ms|s)")
-tc_jitter = re.compile(r"jitter ([0-9.e+]+)(ms|s)")
-
-
-async def health_check_timer(compose_file: str, status_label: ui.label):
-    # print("Health check timer")
-    if await run.io_bound(is_scenario_running, compose_file):
-        status_label.text = "UP"
-        status_label.classes(replace="text-green-500")
-    else:
-        status_label.text = "DOWN"
-        status_label.classes(replace="text-red-500")
+TC_RATE_RE: re.Pattern[str] = re.compile(r"rate ([0-9]+[KMG]bit)")
+TC_LOSS_RE: re.Pattern[str] = re.compile(r"loss ([0-9]+)%")
+TC_DELAY_RE: re.Pattern[str] = re.compile(r"delay ([0-9.e+]+)(ms|s)")
+TC_JITTER_RE: re.Pattern[str] = re.compile(r"jitter ([0-9.e+]+)(ms|s)")
+TC_BANDWIDTH_RE: re.Pattern[str] = re.compile(r"[0-9]+[KMGT]bit", re.IGNORECASE)
 
 
-time_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-time_sock.settimeout(1)
+def validate_bandwidth(value: str) -> str | None:
+    bandwidth = value.strip()
+    if not bandwidth:
+        return None
+    if bandwidth.lower() == "inf":
+        return None
+    return None if TC_BANDWIDTH_RE.fullmatch(bandwidth) else "Use e.g. 10kbit, 1mbit or inf"
 
 
-async def timesync_timer(lbl_time: ui.label, lbl_next_event: ui.label):
+def validate_percentage(value: str) -> str | None:
     try:
-        time_sock.sendto("time".encode(), ("localhost", 9966))
-        # receive response
-        data, addr = time_sock.recvfrom(1024)
-        # print(f"Received: {data.decode()}")
-        cur_time, next_event = data.decode().split(" ")
-        lbl_time.text = cur_time + "s"
-        lbl_time.classes(replace="text-green-500")
-        lbl_next_event.text = next_event
-        lbl_next_event.classes(replace="text-green-500")
-    except Exception as e:
-        print(e)
-        lbl_time.text = "N/A"
-        lbl_time.classes(replace="text-red-500")
-        lbl_next_event.text = "N/A"
-        lbl_next_event.classes(replace="text-red-500")
+        percentage = float(value)
+    except ValueError:
+        return "Not a number"
+    if not 0.0 <= percentage <= 100.0:
+        return "Must be between 0 and 100"
+    return None
 
 
-async def linkstate_timer(
-    compose_file: str, links_area: ui.scroll_area, map_area: ui.scroll_area
-):
-    global modal_dialog
-    if await run.io_bound(is_scenario_running, compose_file) and not modal_dialog:
-        await draw_links(links_area, compose_file)
-        draw_map(map_area)
-
-
-async def jump_to_next_event(
-    compose_file: str,
-    lbl_time: ui.label,
-    lbl_next_event: ui.label,
-    links_area: ui.scroll_area,
-    map_area: ui.scroll_area,
-):
+def validate_non_negative(value: str) -> str | None:
     try:
-        time_sock.sendto("next".encode(), ("localhost", 9966))
-    except Exception as e:
-        print(e)
-    await timesync_timer(lbl_time, lbl_next_event)
-    await linkstate_timer(compose_file, links_area, map_area)
+        delay = float(value)
+    except ValueError:
+        return "Not a number"
+    if delay < 0 or delay == float("inf"):
+        return "Must be a non-negative number"
+    return None
 
 
-def pause_resume_scenario(btn: ui.button):
-    print("Pause/Resume: " + btn.text)
-    if btn.text == "Pause":
+class Link(TypedDict):
+    container: str
+    interface: str
+    bandwidth: str
+    loss: float
+    delay: float
+    delay_unit: str
+    jitter: float
+    jitter_unit: str
+
+
+class ManagerArguments(Namespace):
+    compose_file: str = ""
+    contact_plan: str = ""
+    bind: str = "127.0.0.1"
+    port: int = 8800
+
+
+def delay_to_milliseconds(value: float, unit: str) -> int:
+    return int(value * 1000) if unit == "s" else int(value)
+
+
+class ManagerController:
+    """Own shared Manager state and provide callbacks for its UI."""
+
+    def __init__(self, compose_file: str, contact_plan: str) -> None:
+        self.compose_file: str = compose_file
+        self.contact_plan: str = contact_plan
+        self.network_graph: nx.Graph[
+            str, dict[str, object], dict[str, object]
+        ] = load_graph_from_file(compose_file)
+        self.time_socket: socket.socket = socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM
+        )
+        self.time_socket.settimeout(1)
+        self.modal_dialog: bool = False
+        self.link_memory: dict[str, dict[str, Link]] = {}
+        self.draw_links_lock: asyncio.Lock = asyncio.Lock()
+
+    def close(self) -> None:
+        self.time_socket.close()
+
+    async def health_check_timer(self, status_label: Label) -> None:
+        if await run.io_bound(is_scenario_running, self.compose_file):
+            status_label.text = "UP"
+            status_label.classes(replace="text-green-500")
+        else:
+            status_label.text = "DOWN"
+            status_label.classes(replace="text-red-500")
+
+    async def timesync_timer(
+        self, lbl_time: Label, lbl_next_event: Label
+    ) -> None:
         try:
-            time_sock.sendto("pause".encode(), ("localhost", 9966))
-            btn.text = "Resume"
-        except Exception as e:
-            print(e)
-    else:
+            self.time_socket.sendto(b"time", ("localhost", 9966))
+            data = self.time_socket.recvfrom(1024)[0]
+            cur_time, next_event = data.decode().split()
+            lbl_time.text = cur_time + "s"
+            lbl_time.classes(replace="text-green-500")
+            lbl_next_event.text = next_event
+            lbl_next_event.classes(replace="text-green-500")
+        except (OSError, ValueError) as error:
+            print(f"Unable to read simulation time: {error}")
+            lbl_time.text = "N/A"
+            lbl_time.classes(replace="text-red-500")
+            lbl_next_event.text = "N/A"
+            lbl_next_event.classes(replace="text-red-500")
+
+    async def linkstate_timer(
+        self, links_area: ScrollArea, map_area: ScrollArea
+    ) -> None:
+        if (
+            await run.io_bound(is_scenario_running, self.compose_file)
+            and not self.modal_dialog
+        ):
+            await self.draw_links(links_area)
+            self.draw_map(map_area)
+
+    async def jump_to_next_event(
+        self,
+        lbl_time: Label,
+        lbl_next_event: Label,
+        links_area: ScrollArea,
+        map_area: ScrollArea,
+    ) -> None:
         try:
-            time_sock.sendto("resume".encode(), ("localhost", 9966))
-            btn.text = "Pause"
-        except Exception as e:
-            print(e)
+            self.time_socket.sendto(b"next", ("localhost", 9966))
+        except OSError as error:
+            print(f"Unable to advance simulation: {error}")
+        await self.timesync_timer(lbl_time, lbl_next_event)
+        await self.linkstate_timer(links_area, map_area)
 
+    def pause_resume_scenario(self, button: Button) -> None:
+        if button.text == "Pause":
+            try:
+                self.time_socket.sendto(b"pause", ("localhost", 9966))
+                button.text = "Resume"
+            except OSError as error:
+                print(f"Unable to pause simulation: {error}")
+        else:
+            try:
+                self.time_socket.sendto(b"resume", ("localhost", 9966))
+                button.text = "Pause"
+            except OSError as error:
+                print(f"Unable to resume simulation: {error}")
 
-def open_xterm(container: str):
-    print(f"Opening xterm for container {container}")
-    os.system(f'xterm -e "docker exec -it {container} /bin/bash" &')
+    async def do_link_toggle(
+        self, switch: Switch, link: Link, links_area: ScrollArea
+    ) -> None:
+        container = link["container"]
+        interface = link["interface"]
+        saved_links = self.link_memory.setdefault(container, {})
+        bandwidth = "" if link["bandwidth"] == "inf" else link["bandwidth"]
 
+        if switch.value:
+            saved_link = saved_links.get(interface)
+            loss = saved_link["loss"] if saved_link is not None else 0.0
+        else:
+            saved_links[interface] = link
+            loss = 100.0
 
-def open_log(compose_file: str, container: str):
-    print(f"Opening logs for container {container}")
-    os.system(f'xterm -e "docker compose -f {compose_file} logs -f {container}" &')
-
-
-link_memory = {}
-
-
-async def do_link_toggle(
-    switch: ui.switch, link: dict, links_area: ui.scroll_area, compose_file: str
-):
-    print(f"Switch: {switch.value}, Link: {link}")
-    if switch.value == True:
-        print("Activate link")
-        bw = ""
-        if link["bw"] != "inf":
-            bw = link["bw"]
-        loss = 0.0
-        if link["container"] in link_memory:
-            if link["interface"] in link_memory[link["container"]]:
-                link2 = link_memory[link["container"]][link["interface"]]
-                if "loss" in link2:
-                    loss = float(link2["loss"])
-        await run.io_bound(
-            set_on_interface,
-            link["container"],
-            link["interface"],
-            loss=loss,
-            bandwidth=bw,
-            delay=int(link["delay"]),
-            jitter=int(link["jitter"]),
-        )
-        # set_on_interface(
-        #     link["container"],
-        #     link["interface"],
-        #     loss=loss,
-        #     bandwidth=link["bw"],
-        #     delay=int(link["delay"]),
-        #     jitter=int(link["jitter"]),
-        # )
-    else:
-        print("Deactivate link")
-        if link["container"] not in link_memory:
-            link_memory[link["container"]] = {}
-        if link["interface"] not in link_memory[link["container"]]:
-            link_memory[link["container"]][link["interface"]] = {}
-        link_memory[link["container"]][link["interface"]] = link
-
-        bw = ""
-        if link["bw"] != "inf":
-            bw = link["bw"]
-
-        # set_on_interface(
-        #     link["container"],
-        #     link["interface"],
-        #     loss=100.0,
-        #     bandwidth=bw,
-        #     delay=int(link["delay"]),
-        #     jitter=int(link["jitter"]),
-        # )
-        await run.io_bound(
-            set_on_interface,
-            link["container"],
-            link["interface"],
-            loss=100.0,
-            bandwidth=bw,
-            delay=int(link["delay"]),
-            jitter=int(link["jitter"]),
-        )
-    await draw_links(links_area, compose_file)
-
-
-g = nx.Graph()
-
-modal_dialog = False
-
-
-def create_link_dialog(link: dict):
-    with ui.dialog() as dialog, ui.card():
-        with ui.grid(columns=2):
-            ui.label("Container: ")
-            c = ui.label(link["container"])
-            ui.label("Interface: ")
-            i = ui.label(link["interface"])
-            ui.label("Bandwidth: ")
-            bw = ui.input(value=link["bw"])
-            ui.label("Loss: ")
-            loss = ui.input(value=link["loss"])
-            ui.label("Delay: ")
-            delay = ui.input(value=link["delay"])
-            ui.label("Jitter: ")
-            jitter = ui.input(value=link["jitter"])
-
-            ui.button(
-                "Apply",
-                on_click=lambda: dialog.submit(
-                    {
-                        "container": c.text,
-                        "interface": i.text,
-                        "bw": bw.value,
-                        "loss": float(loss.value),
-                        "delay": int(delay.value),
-                        "jitter": int(jitter.value),
-                    }
-                ),
+        try:
+            await run.io_bound(
+                set_on_interface,
+                container,
+                interface,
+                loss=loss,
+                bandwidth=bandwidth,
+                delay=delay_to_milliseconds(link["delay"], link["delay_unit"]),
+                jitter=delay_to_milliseconds(link["jitter"], link["jitter_unit"]),
             )
-            ui.button("Cancel", on_click=lambda: dialog.close())
-    return dialog
+        except (OSError, RuntimeError) as error:
+            ui.notify(f"Failed to apply link settings: {error}", type="negative")
+        await self.draw_links(links_area)
 
+    def create_link_dialog(self, link: Link) -> Dialog:
+        with ui.dialog() as dialog, ui.card():
+            with ui.grid(columns=2):
+                ui.label("Container: ")
+                container_label = ui.label(link["container"])
+                ui.label("Interface: ")
+                interface_label = ui.label(link["interface"])
+                ui.label("Bandwidth: ")
+                bandwidth_input = ui.input(
+                    value=link["bandwidth"], validation=validate_bandwidth
+                )
+                ui.label("Loss (%): ")
+                loss_input = ui.input(
+                    value=str(link["loss"]), validation=validate_percentage
+                )
+                ui.label(f"Delay ({link['delay_unit']}): ")
+                delay_input = ui.input(
+                    value=str(link["delay"]), validation=validate_non_negative
+                )
+                ui.label(f"Jitter ({link['jitter_unit']}): ")
+                jitter_input = ui.input(
+                    value=str(link["jitter"]), validation=validate_non_negative
+                )
 
-async def show_link_dialog(link: dict, links_area: ui.scroll_area, compose_file: str):
-    global modal_dialog
-    modal_dialog = True
-    print(f"Showing link dialog for {link}")
-    dialog = create_link_dialog(link)
-    result = await dialog
-    dialog.clear()
-    modal_dialog = False
-    if result:
-        print(result)
-        set_on_interface(
-            result["container"],
-            result["interface"],
-            loss=result["loss"],
-            bandwidth=result["bw"],
-            delay=result["delay"],
-            jitter=result["jitter"],
-        )
-        await draw_links(links_area, compose_file)
-    else:
-        print("Dialog cancelled")
-
-
-drawing_links_in_progress = False
-
-
-async def draw_links(links_area: ui.scroll_area, compose_file: str):
-    global drawing_links_in_progress
-    if drawing_links_in_progress:
-        return
-    drawing_links_in_progress = True
-    global g
-    with links_area:
-        interfaces = await run.io_bound(get_container_interfaces, compose_file)
-        links_area.clear()
-        for c, ifs in interfaces.items():
-            for i, v in ifs.items():
-                # print(f"Container: {c}, Interface: {i}, Value: {v}")
-                is_active = True
-                bw = "inf"
-                loss = "0"
-                delay = "0"
-                delay_unit = "ms"
-                jitter = "0"
-                jitter_unit = "ms"
-
-                m = tc_rate.search(v)
-                if m:
-                    bw = m.group(1)
-
-                m = tc_loss.search(v)
-                if m:
-                    loss = m.group(1)
-
-                m = tc_delay.search(v)
-                if m:
-                    delay = float(m.group(1))
-                    delay_unit = m.group(2)
-
-                m = tc_jitter.search(v)
-                if m:
-                    jitter = m.group(1)
-                    jitter_unit = m.group(2)
-
-                if "loss 100%" in v:
-                    is_active = False
-
-                if_fields = i.split("_")
-                if is_active:
-                    if len(if_fields) > 1:
-                        if (
-                            (if_fields[0] == c or if_fields[1] == c)
-                            and if_fields[0] in g.nodes()
-                            and if_fields[1] in g.nodes()
-                        ):
-                            # print(f"Adding edge: {if_fields[0]} -> {if_fields[1]}")
-                            g.add_edge(if_fields[0], if_fields[1])
-                else:
-                    if len(if_fields) > 1:
-                        if (
-                            (if_fields[0] == c or if_fields[1] == c)
-                            and if_fields[0] in g.nodes()
-                            and if_fields[1] in g.nodes()
-                        ):
-                            # print(f"Removing edge: {if_fields[0]} -> {if_fields[1]}")
-                            try:
-                                g.remove_edge(if_fields[0], if_fields[1])
-                            except Exception as e:
-                                try:
-                                    g.remove_edge(if_fields[1], if_fields[2])
-                                except Exception as e:
-                                    print(e)
-
-                bg = "#f3f4f6" if is_active else "#fde8e8"
-                with (
-                    ui.row()
-                    .classes("place-items-center w-full")
-                    .style(f"background-color: {bg}")
-                ):
-                    if is_active:
-                        ui.icon("cloud_done").classes("text-green-500").style(
-                            "width: 40px"
-                        )
-                    else:
-                        ui.icon("cloud_off").classes("text-red-500").style(
-                            "width: 40px"
-                        )
-                    ui.markdown(f"**{c}**").classes("text-lg").style("width: 250px")
-                    ui.label(f"{i}").classes("text-lg").style("width: 250px")
-                    ui.markdown(
-                        f"**bw:** {bw} **loss:** {loss}% **delay:** {delay}{delay_unit} **jitter:** {jitter}{jitter_unit}"
-                    ).classes("text-lg")
-                    ui.space()
-                    link = {
-                        "container": c,
-                        "interface": i,
-                        "bw": bw,
-                        "loss": loss,
-                        "delay": delay,
-                        "jitter": jitter,
-                    }
-                    ui.button(
-                        "Edit",
-                        on_click=lambda link=link: show_link_dialog(
-                            link, links_area, compose_file
-                        ),
+                def submit_link() -> None:
+                    valid = all(
+                        [
+                            bandwidth_input.validate(),
+                            loss_input.validate(),
+                            delay_input.validate(),
+                            jitter_input.validate(),
+                        ]
                     )
-                    active_toggle = ui.switch("Active", value=is_active)
-                    active_toggle.on_value_change(
-                        lambda link=link, active_toggle=active_toggle: do_link_toggle(
-                            active_toggle, link, links_area, compose_file
+                    if not valid:
+                        ui.notify(
+                            "Invalid link parameters", type="negative"
                         )
-                    )
-    drawing_links_in_progress = False
+                        return
+                    try:
+                        dialog.submit(
+                            Link(
+                                container=container_label.text,
+                                interface=interface_label.text,
+                                bandwidth=bandwidth_input.value or "inf",
+                                loss=float(loss_input.value or "0"),
+                                delay=float(delay_input.value or "0"),
+                                delay_unit=link["delay_unit"],
+                                jitter=float(jitter_input.value or "0"),
+                                jitter_unit=link["jitter_unit"],
+                            )
+                        )
+                    except ValueError:
+                        ui.notify("Invalid link parameters", type="negative")
 
+                ui.button("Apply", on_click=submit_link)
+                ui.button("Cancel", on_click=lambda: dialog.close())
+        return dialog
 
-def draw_map(map_area: ui.scroll_area):
-    global g
-    with map_area:
-        map_area.clear()
+    async def show_link_dialog(self, link: Link, links_area: ScrollArea) -> None:
+        dialog = self.create_link_dialog(link)
+        self.modal_dialog = True
+        try:
+            result = cast(Link | None, await dialog)
+        finally:
+            if not dialog.is_deleted:
+                dialog.clear()
+            self.modal_dialog = False
 
-        with ui.matplotlib(figsize=(8, 5)).figure as fig:
-            # x = np.linspace(0.0, 5.0)
-            # y = np.cos(2 * np.pi * x) * np.exp(-x)
-            ax = fig.gca()
-            nx.draw(
-                g,
-                with_labels=True,
-                font_weight="bold",
-                ax=ax,
-                pos=nx.circular_layout(g),
-            )
-            # ax.plot(x, y, "-")
+        if result is not None:
+            try:
+                await run.io_bound(
+                    set_on_interface,
+                    result["container"],
+                    result["interface"],
+                    loss=result["loss"],
+                    bandwidth=(
+                        "" if result["bandwidth"] == "inf" else result["bandwidth"]
+                    ),
+                    delay=delay_to_milliseconds(result["delay"], result["delay_unit"]),
+                    jitter=delay_to_milliseconds(
+                        result["jitter"], result["jitter_unit"]
+                    ),
+                )
+            except (OSError, RuntimeError) as error:
+                ui.notify(f"Failed to apply link settings: {error}", type="negative")
+            await self.draw_links(links_area)
 
+    async def draw_links(self, links_area: ScrollArea) -> None:
+        if self.draw_links_lock.locked():
+            return
+        async with self.draw_links_lock:
+            interfaces = await run.io_bound(
+                get_container_interfaces, self.compose_file
+            ) or {}
+            with links_area:
+                links_area.clear()
+                for container, container_interfaces in interfaces.items():
+                    for interface, qdisc in container_interfaces.items():
+                        rate_match = TC_RATE_RE.search(qdisc)
+                        loss_match = TC_LOSS_RE.search(qdisc)
+                        delay_match = TC_DELAY_RE.search(qdisc)
+                        jitter_match = TC_JITTER_RE.search(qdisc)
 
-def ui_main(compose_file: str, contact_plan: str):
-    global g
-    g = load_graph_from_file(compose_file)
-    print(g)
-    print(g.edges())
+                        bandwidth = rate_match.group(1) if rate_match else "inf"
+                        loss = float(loss_match.group(1)) if loss_match else 0.0
+                        delay = float(delay_match.group(1)) if delay_match else 0.0
+                        delay_unit = delay_match.group(2) if delay_match else "ms"
+                        jitter = float(jitter_match.group(1)) if jitter_match else 0.0
+                        jitter_unit = jitter_match.group(2) if jitter_match else "ms"
+                        is_active = loss < 100
 
-    with ui.element("div").classes("w-full h-screen"):
-        # ui.markdown("### Docker TestBed Manager")
-        with ui.row().classes("items-center"):
-            ui.label("Scenario: ")
-            lbl_compose_file = ui.label(compose_file).classes("text-blue-500")
-            ui.label("Contact Plan: ")
-            lbl_contact_plan = ui.label(contact_plan).classes("text-blue-500")
-            ui.label("Status: ")
-            lbl_status = ui.label("DOWN").classes("text-red-500")
-            ui.label("Simulation Time: ")
-            lbl_time = ui.label("N/A").classes("text-red-500")
-            ui.label("Next Event: ")
-            lbl_next_event = ui.label("N/A").classes("text-red-500")
-            ui.space()
-            btn_next = ui.button(
-                "Jump to next event",
-            )
-            btn_pause = ui.button("Pause")
-            btn_pause.on_click(lambda: pause_resume_scenario(btn_pause))
+                        endpoints = interface.split("_")
+                        if (
+                            len(endpoints) >= 2
+                            and container in endpoints[:2]
+                            and all(
+                                endpoint in self.network_graph
+                                for endpoint in endpoints[:2]
+                            )
+                        ):
+                            edge = endpoints[0], endpoints[1]
+                            if is_active:
+                                self.network_graph.add_edge(*edge)
+                            elif self.network_graph.has_edge(*edge):
+                                self.network_graph.remove_edge(*edge)
 
-        with ui.tabs().classes("w-full") as tabs:
-            tab_overview = ui.tab("Overview")
-            tab_links = ui.tab("Links")
-            tab_map = ui.tab("Map")
-        with ui.tab_panels(tabs, value=tab_overview).classes("w-full h-full"):
-            with ui.tab_panel(tab_overview):
-                with ui.scroll_area().classes("h-2/3 border"):
-                    containers = get_container_names(compose_file)
-                    for c in containers:
-                        with ui.row():
-                            ui.label(c).classes("text-lg").style("width: 250px")
+                        link: Link = {
+                            "container": container,
+                            "interface": interface,
+                            "bandwidth": bandwidth,
+                            "loss": loss,
+                            "delay": delay,
+                            "delay_unit": delay_unit,
+                            "jitter": jitter,
+                            "jitter_unit": jitter_unit,
+                        }
+                        background = "#f3f4f6" if is_active else "#fde8e8"
+                        with ui.row().classes("place-items-center w-full").style(
+                            f"background-color: {background}"
+                        ):
+                            icon = "cloud_done" if is_active else "cloud_off"
+                            color = "text-green-500" if is_active else "text-red-500"
+                            ui.icon(icon).classes(color).style("width: 40px")
+                            ui.markdown(f"**{container}**").classes("text-lg").style(
+                                "width: 250px"
+                            )
+                            ui.label(interface).classes("text-lg").style(
+                                "width: 250px"
+                            )
+                            ui.markdown(
+                                f"**bw:** {bandwidth} **loss:** {loss:g}% "
+                                f"**delay:** {delay:g}{delay_unit} "
+                                f"**jitter:** {jitter:g}{jitter_unit}"
+                            ).classes("text-lg")
                             ui.space()
                             ui.button(
-                                "Shell",
-                                on_click=lambda c=c: open_xterm(c),
+                                "Edit",
+                                on_click=lambda _, link=link: self.show_link_dialog(
+                                    link, links_area
+                                ),
                             )
-                            ui.button(
-                                "Log", on_click=lambda c=c: open_log(compose_file, c)
+                            active_toggle = ui.switch("Active", value=is_active)
+                            active_toggle.on_value_change(
+                                lambda _, link=link, switch=active_toggle: self.do_link_toggle(
+                                    switch, link, links_area
+                                )
                             )
-            with ui.tab_panel(tab_links):
-                # draw_overview()
-                ui.button(
-                    "Refresh",
-                    on_click=lambda: draw_links(links_area, compose_file),
+
+    def draw_map(self, map_area: ScrollArea) -> None:
+        with map_area:
+            map_area.clear()
+            with ui.matplotlib(figsize=(8, 5)).figure as figure:
+                axes = figure.gca()
+                nx.draw(
+                    self.network_graph,
+                    with_labels=True,
+                    font_weight="bold",
+                    ax=axes,
+                    pos=nx.circular_layout(self.network_graph),
                 )
-                links_area = ui.scroll_area().classes("h-2/3 border")
-                # draw_links(links_area, compose_file)
-            with ui.tab_panel(tab_map):
-                map_area = ui.scroll_area().classes("h-2/3 border")
 
-                draw_map(map_area)
-        btn_next.on_click(
-            lambda: jump_to_next_event(
-                compose_file, lbl_time, lbl_next_event, links_area, map_area
+    def build_ui(self) -> None:
+        containers = get_container_names(self.compose_file)
+        console = ConsoleFooter(containers)
+        links_area: ScrollArea
+        map_area: ScrollArea
+
+        with ui.element("div").classes("w-full h-screen"):
+            with ui.row().classes("items-center"):
+                ui.label("Scenario: ")
+                ui.label(self.compose_file).classes("text-blue-500")
+                ui.label("Contact Plan: ")
+                ui.label(self.contact_plan).classes("text-blue-500")
+                ui.label("Status: ")
+                status_label: Label = ui.label("DOWN").classes("text-red-500")
+                ui.label("Simulation Time: ")
+                lbl_time: Label = ui.label("N/A").classes("text-red-500")
+                ui.label("Next Event: ")
+                lbl_next_event: Label = ui.label("N/A").classes("text-red-500")
+                ui.space()
+                btn_next: Button = ui.button("Jump to next event")
+                btn_pause: Button = ui.button("Pause")
+                btn_pause.on_click(lambda: self.pause_resume_scenario(btn_pause))
+
+            with ui.tabs().classes("w-full") as tabs:
+                tab_links = ui.tab("Links")
+                tab_map = ui.tab("Map")
+            with ui.tab_panels(tabs, value=tab_links).classes("w-full h-full"):
+                with ui.tab_panel(tab_links):
+                    ui.button(
+                        "Refresh",
+                        on_click=lambda: self.draw_links(links_area),
+                    )
+                    links_area = ui.scroll_area().classes("h-2/3 border")
+                with ui.tab_panel(tab_map):
+                    map_area = ui.scroll_area().classes("h-2/3 border")
+                    self.draw_map(map_area)
+            btn_next.on_click(
+                lambda: self.jump_to_next_event(
+                    lbl_time, lbl_next_event, links_area, map_area
+                )
             )
-        )
-        # draw_links()
 
-    ui.timer(
-        10.0,
-        lambda: health_check_timer(compose_file, lbl_status),
+        console.build()
+
+        ui.timer(10.0, lambda: self.health_check_timer(status_label))
+        ui.timer(2.0, lambda: self.timesync_timer(lbl_time, lbl_next_event))
+        ui.timer(5.0, lambda: self.linkstate_timer(links_area, map_area))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Manage an NSE2 Docker scenario")
+    parser.add_argument("compose_file", help="Docker Compose file for the scenario")
+    parser.add_argument("contact_plan", help="scenario contact plan")
+    parser.add_argument(
+        "-b",
+        "--bind",
+        help="bind address for web interface to listen on",
+        default="127.0.0.1",
     )
-    ui.timer(
-        2.0,
-        lambda: timesync_timer(lbl_time, lbl_next_event),
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        help="port for web interface to listen on",
+        default=8800,
     )
-    ui.timer(
-        5.0,
-        lambda: linkstate_timer(compose_file, links_area, map_area),
-    )
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("compose_file", help="compose file to load")
-    parser.add_argument("contact_plan", help="contact plan file to load")
-    parser.add_argument("-b", "--bind", help="bind address for web interface to listen on", default="127.0.0.1")
-    parser.add_argument("-p", "--port", help="port for web interface to listen on", default=8800)
-    args = parser.parse_args()
-
+    args = parser.parse_args(namespace=ManagerArguments())
     if not is_scenario_running(args.compose_file):
-        print("Scenario is not running")
-        quit(1)
+        parser.error("Scenario is not running")
 
-    print("Retrieving container names...")
-    container_names = get_container_names(args.compose_file)
-    print(container_names)
-
-    def build_page():
-        ui_main(args.compose_file, args.contact_plan)
-
-    ui.run(
-        root=build_page,
-        reload=False,
-        title="Docker TestBed Manager",
-        show=False,
-        host=args.bind,
-        port=args.port,
-    )
+    manager = ManagerController(args.compose_file, args.contact_plan)
+    try:
+        ui.run(
+            root=manager.build_ui,
+            reload=False,
+            title="Docker TestBed Manager",
+            show=False,
+            port=args.port,
+            host=args.bind,
+        )
+    except KeyboardInterrupt:
+        print("Stopped.")
+    finally:
+        manager.close()
 
 
 if __name__ in {"__main__", "__mp_main__"}:

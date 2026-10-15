@@ -1,5 +1,5 @@
 import subprocess
-
+from tools.helpers.validators import validate_bandwidth
 
 def run_in_container(
     container_name: str, command: str, debug_print: bool = False
@@ -37,8 +37,13 @@ def set_on_interface(
     else:
         delay_str = f"{delay}ms"
     cmd = f"tc qdisc {command} dev {interface} root netem loss {loss}% delay {delay_str} {jitter}ms"
-    if bandwidth != "":
+    
+    err = validate_bandwidth(bandwidth)
+    if err == None and bandwidth != "":
         cmd += f" rate {bandwidth}"
+    else:
+        print(err)
+
     res = run_in_container(
         container_name,
         cmd,

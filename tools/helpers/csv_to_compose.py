@@ -78,6 +78,17 @@ def shorten_label(label: str) -> str:
     return "_".join(LABEL_REPLACEMENTS.get(part, part) for part in label.split("_"))
 
 
+def compute_label_collisions(rows: list[ParsedRow]) -> set[tuple[str, str, str]]:
+    """Return shortened label keys that represent multiple distinct labels."""
+    labels_by_key: defaultdict[tuple[str, str, str], set[str]] = defaultdict(set)
+    for r in rows:
+        a, b = tuple(sorted([r.src, r.dst]))
+        raw_key = strip_dir_suffix(r.label)
+        short_key = shorten_label(raw_key)
+        labels_by_key[(a, b, short_key)].add(raw_key)
+    return {key for key, labels in labels_by_key.items() if len(labels) > 1}
+
+
 def compute_multi_pairs(rows: list[ParsedRow]) -> set[tuple[str, str]]:
     """Return node pairs needing a dedicated interface: those with more
     than one distinct label after stripping _ul/_dl suffixes."""
@@ -88,7 +99,11 @@ def compute_multi_pairs(rows: list[ParsedRow]) -> set[tuple[str, str]]:
 
 
 def make_ifname(
-    node1: str, node2: str, label: str, multi_pairs: set[tuple[str, str]]
+    node1: str,
+    node2: str,
+    label: str,
+    multi_pairs: set[tuple[str, str]],
+    label_collisions: set[tuple[str, str, str]] | None = None,
 ) -> str | None:
     """Build an interface name for this pair+label, or None if the pair
     should just use the plain node name. Falls back to a 12-char MD5 hash
@@ -96,7 +111,10 @@ def make_ifname(
     a, b = tuple(sorted([node1, node2]))
     if (a, b) not in multi_pairs:
         return None
-    key = shorten_label(strip_dir_suffix(label))
+    raw_key = strip_dir_suffix(label)
+    key = shorten_label(raw_key)
+    if label_collisions and (a, b, key) in label_collisions:
+        key = raw_key
     ifname = f"{a}_{b}_{key}" if key else f"{a}_{b}"
     if len(ifname) >= 14:
         ifname_md5 = hashlib.md5(ifname.encode()).hexdigest()[:12]
@@ -141,6 +159,7 @@ def get_graph_from_csv(
     G: nx.MultiDiGraph[str] = nx.MultiDiGraph()
     rows = parse_csv_rows(csvfile, prefix=prefix)
     multi_pairs = compute_multi_pairs(rows)
+    label_collisions = compute_label_collisions(rows)
 
     for r in rows:
         for node in (r.src, r.dst):
@@ -168,7 +187,10 @@ def get_graph_from_csv(
 
         dynamic_link = not (r.ts_start == 0 and r.ts_end == -1)
         node1, node2 = tuple(sorted([r.src, r.dst]))
-        net_name = make_ifname(r.src, r.dst, r.label, multi_pairs) or f"{node1}_{node2}"
+        net_name = (
+            make_ifname(r.src, r.dst, r.label, multi_pairs, label_collisions)
+            or f"{node1}_{node2}"
+        )
 
         if not G.has_edge(r.src, r.dst, key=net_name):
             G.add_edge(

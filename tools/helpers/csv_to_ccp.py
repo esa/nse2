@@ -69,12 +69,30 @@ def parse_csv_rows(csvfile: str, prefix: str = "") -> list[ParsedRow]:
                     dst=strip_prefix(row[1], prefix),
                     ts_start=float(row[2]),
                     ts_end=float(row[3]),
-                    bw=int(row[4]),
+                    bw=human_to_bps(row[4]),
                     delay=float(row[5]),
                     label=row[6] if len(row) == 7 else "",
                 )
             )
     return rows
+
+
+def human_to_bps(bw: str) -> int:
+    """Convert a human-readable bandwidth string (e.g. 100mbit) to bps.
+
+    Plain integers are passed through unchanged, so numeric CSV values
+    keep working as before.
+    """
+    bw = bw.strip().lower()
+    for suffix, factor in (
+        ("gbit", 1_000_000_000),
+        ("mbit", 1_000_000),
+        ("kbit", 1_000),
+        ("bit", 1),
+    ):
+        if bw.endswith(suffix):
+            return int(float(bw[: -len(suffix)]) * factor)
+    return int(float(bw))
 
 
 def strip_prefix(name: str, prefix: str) -> str:

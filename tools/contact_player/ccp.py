@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from os import PathLike
 from pathlib import Path
-from typing import override
 
 from tools.contact_player.scenario import NetworkName, Node
 
@@ -214,11 +213,9 @@ class Contact:
         """Return whether the contact is active at the given simulation time."""
         return self.end == -1 or self.begin <= time < self.end
 
-    @override
     def __str__(self) -> str:
         return f"Contact ({self.src.name} -> {self.dst.name} via {self.network}, {self.begin}-{self.end})"
 
-    @override
     def __repr__(self) -> str:
         return self.__str__()
 

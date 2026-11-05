@@ -12,6 +12,7 @@ dependencies = [
   "nicegui>=3.3.0",
   "pyaml",
   "python-dateutil",
+  "typing-extensions",
 ]
 
 [project.optional-dependencies]

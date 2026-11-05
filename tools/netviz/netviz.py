@@ -6,7 +6,9 @@ import json
 import select
 import subprocess
 import time
-from typing import NotRequired, TypedDict, cast
+from typing import cast
+
+from typing_extensions import NotRequired, TypedDict
 
 from nicegui import ui
 

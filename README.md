@@ -49,6 +49,6 @@ There are a few main commands for running and controlling a simulation:
 Various example scenarios are provided under `scenarios/` that include network topologies, contact plans and demo actions.
 
 - [scenarios/simple](scenarios/simple) is a basic 3-node testing scenario.
-- [scenarios/eo](scenarios/eo) is a simple earth observation scenario.
+- [scenarios/leo](scenarios/leo) is a simple low earth orbit communication scenario.
 - [scenarios/lc](scenarios/lc) is complex scenario modelling lunar communication.
 - [scenarios/mc](scenarios/mc) is a mid-size mars communication scenario.

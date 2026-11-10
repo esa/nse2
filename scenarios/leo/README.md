@@ -1,8 +1,8 @@
-Scenario: Earth Observation
+Scenario: Low Earth Orbit
 ===========================
 
 ## Scenario Definition
-The EO scenario is a simple network scenario with a single satellite, 2 ground stations, 1 mission control centre (MCS) and 1 payload centre.
+The LEO scenario is a simple network scenario with a single satellite, 2 ground stations, 1 mission control centre (MCS) and 1 payload centre.
 In this scenario the satellite passes are frequent and data can be downlinked at high speed.
 
 ## Topology

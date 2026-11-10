@@ -1,6 +1,6 @@
 {
-  "title": "Earth Observation",
-  "description": "A minimal earth observation scenario.",
+  "title": "Low Earth Orbit",
+  "description": "A minimal earth orbit communication scenario.",
   "background": "extras/background.jpg",
   "links": "tmp/compose.netmap",
   "nodes": [

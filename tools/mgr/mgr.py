@@ -16,6 +16,8 @@ from nicegui.elements.label import Label
 from nicegui.elements.scroll_area import ScrollArea
 from nicegui.elements.switch import Switch
 
+from tools.helpers.validators import validate_bandwidth
+
 from tools.contact_player.tc_netem import set_on_interface
 from tools.mgr.helpers import (
     get_container_interfaces,
@@ -29,17 +31,6 @@ TC_RATE_RE: re.Pattern[str] = re.compile(r"rate ([0-9]+[KMG]bit)")
 TC_LOSS_RE: re.Pattern[str] = re.compile(r"loss ([0-9]+)%")
 TC_DELAY_RE: re.Pattern[str] = re.compile(r"delay ([0-9.e+]+)(ms|s)")
 TC_JITTER_RE: re.Pattern[str] = re.compile(r"jitter ([0-9.e+]+)(ms|s)")
-TC_BANDWIDTH_RE: re.Pattern[str] = re.compile(r"[0-9]+[KMGT]bit", re.IGNORECASE)
-
-
-def validate_bandwidth(value: str) -> str | None:
-    bandwidth = value.strip()
-    if not bandwidth:
-        return None
-    if bandwidth.lower() == "inf":
-        return None
-    return None if TC_BANDWIDTH_RE.fullmatch(bandwidth) else "Use e.g. 10kbit, 1mbit or inf"
-
 
 def validate_percentage(value: str) -> str | None:
     try:
